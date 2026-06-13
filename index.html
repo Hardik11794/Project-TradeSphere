@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Portfolio & Trading Journal</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- CSS stylesheet -->
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation (Responsive) -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                </div>
+                <h2>TradeSphere</h2>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" id="nav-dashboard">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" id="nav-sources">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    <span>Data Sources</span>
+                </a>
+                <a href="#ledger-section" class="nav-item" id="nav-ledger">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    <span>Ledger Journal</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <a href="#" class="nav-item footer-nav-item" id="nav-logs">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h6"/><path d="M9 9h1"/></svg>
+                    <span>Developer Logs</span>
+                    <span id="log-error-count" class="log-count hidden">0</span>
+                </a>
+                <button id="theme-toggle" class="btn btn-secondary btn-icon-only" title="Toggle Theme">
+                    <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                    <svg class="moon-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Dashboard Content Section -->
+            <div id="tab-dashboard" class="tab-content-pane">
+                <!-- Header Bar -->
+                <header class="top-header">
+                    <div class="header-info">
+                        <h1>Trading Portfolio</h1>
+                        <p class="subtitle">Real-time asset tracking and investment snapshots</p>
+                    </div>
+                    <div class="header-actions">
+                        <button id="btn-reset" class="btn btn-secondary" title="Sync all active data feeds">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+                            <span>Sync Feeds</span>
+                        </button>
+                        <button id="btn-export" class="btn btn-secondary">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span>Export CSV</span>
+                        </button>
+                        <label for="csv-file" class="btn btn-secondary file-upload-btn">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <span>Import CSV</span>
+                            <input type="file" id="csv-file" accept=".csv" style="display: none;">
+                        </label>
+                    </div>
+                </header>
+
+                <!-- Metrics Cards Grid -->
+                <section class="metrics-grid">
+                    <!-- Card 1: Portfolio Value -->
+                    <div class="metric-card glass-card primary">
+                        <div class="metric-header">
+                            <span class="metric-title">Portfolio Value</span>
+                            <div class="metric-icon bg-primary-soft">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                            </div>
+                        </div>
+                        <div class="metric-body">
+                            <h2 id="metric-portfolio-val">$0.00</h2>
+                            <div class="metric-change neutral" id="metric-pl-container">
+                                <span class="trend-icon" id="trend-icon-pl">▬</span>
+                                <span id="metric-pl-val">$0.00</span>
+                                <span class="pct" id="metric-pl-pct">(0.00%)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card 2: Buying Power (Cash) -->
+                    <div class="metric-card glass-card">
+                        <div class="metric-header">
+                            <span class="metric-title">Buying Power (Cash)</span>
+                            <div class="metric-icon bg-success-soft">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+                            </div>
+                        </div>
+                        <div class="metric-body">
+                            <h2 id="metric-cash">$0.00</h2>
+                            <p class="metric-desc">Available for purchases</p>
+                        </div>
+                    </div>
+
+                    <!-- Card 3: Total Invested -->
+                    <div class="metric-card glass-card">
+                        <div class="metric-header">
+                            <span class="metric-title">Asset Market Value</span>
+                            <div class="metric-icon bg-warning-soft">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                            </div>
+                        </div>
+                        <div class="metric-body">
+                            <h2 id="metric-assets-val">$0.00</h2>
+                            <p class="metric-desc" id="metric-shares-held">No active holdings</p>
+                        </div>
+                    </div>
+
+                    <!-- Card 4: Cost Basis -->
+                    <div class="metric-card glass-card">
+                        <div class="metric-header">
+                            <span class="metric-title">Cost Basis (Avg Price)</span>
+                            <div class="metric-icon bg-purple-soft">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                            </div>
+                        </div>
+                        <div class="metric-body">
+                            <h2 id="metric-avg-price">$0.00</h2>
+                            <p class="metric-desc" id="metric-total-spent">Total Spent: $0.00</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Charts Section -->
+                <section class="charts-section glass-card">
+                    <div class="section-header">
+                        <h3>Portfolio Analytics</h3>
+                        <div class="chart-toggle-group">
+                            <button id="btn-chart-portfolio" class="btn btn-tab active">Portfolio Value</button>
+                            <button id="btn-chart-prices" class="btn btn-tab">Price vs Avg Cost</button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="portfolioChart"></canvas>
+                    </div>
+                </section>
+
+                <!-- Ledger Journal Table Section -->
+                <section id="ledger-section" class="ledger-section glass-card">
+                    <div class="section-header flex-wrap">
+                        <div class="section-title-area">
+                            <h3>Transaction Log Journal</h3>
+                            <p class="section-subtitle">Comprehensive list of trading snapshots and decisions</p>
+                        </div>
+                        <div class="control-actions">
+                            <button id="btn-add-row" class="btn btn-primary">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                <span>Add Snapshot</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Table Search and Filters -->
+                    <div class="table-filters-container">
+                        <div class="search-wrapper">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" id="search-input" placeholder="Search by Ticker or Exchange...">
+                        </div>
+                        
+                        <div class="filters-wrapper">
+                            <select id="filter-decision" class="filter-select">
+                                <option value="ALL">All Decisions</option>
+                                <option value="BUY">BUY Only</option>
+                                <option value="NO BUY">NO BUY Only</option>
+                                <option value="FIRST SNAPSHOT">First Snapshot Only</option>
+                            </select>
+                            
+                            <select id="filter-ticker" class="filter-select">
+                                <option value="ALL">All Tickers</option>
+                                <!-- Dynamically populated -->
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- The Responsive Table -->
+                    <div class="table-responsive">
+                        <table class="ledger-table" id="ledger-table">
+                            <thead>
+                                <tr>
+                                    <th data-sort="timestamp" class="sortable">Timestamp <span class="sort-indicator"></span></th>
+                                    <th data-sort="ticker" class="sortable">Ticker <span class="sort-indicator"></span></th>
+                                    <th data-sort="exchange" class="sortable">Exchange <span class="sort-indicator"></span></th>
+                                    <th data-sort="todayPrice" class="sortable text-right">Today Price <span class="sort-indicator"></span></th>
+                                    <th data-sort="prevPrice" class="sortable text-right">Previous Snapshot Price <span class="sort-indicator"></span></th>
+                                    <th data-sort="decision" class="sortable text-center">Decision <span class="sort-indicator"></span></th>
+                                    <th data-sort="sharesBought" class="sortable text-center">Shares Bought <span class="sort-indicator"></span></th>
+                                    <th data-sort="purchaseCost" class="sortable text-right">Purchase Cost <span class="sort-indicator"></span></th>
+                                    <th data-sort="cashRemaining" class="sortable text-right">Cash Remaining <span class="sort-indicator"></span></th>
+                                    <th data-sort="totalShares" class="sortable text-center">Total Shares <span class="sort-indicator"></span></th>
+                                    <th data-sort="totalSpent" class="sortable text-right">Total Spent <span class="sort-indicator"></span></th>
+                                    <th data-sort="avgPurchasePrice" class="sortable text-right">Average Purchase Price <span class="sort-indicator"></span></th>
+                                    <th data-sort="portfolioValue" class="sortable text-right">Portfolio Value <span class="sort-indicator"></span></th>
+                                    <th data-sort="profitLoss" class="sortable text-right">Profit/Loss <span class="sort-indicator"></span></th>
+                                    <th data-sort="returnPct" class="sortable text-right">Return % <span class="sort-indicator"></span></th>
+                                </tr>
+                            </thead>
+                            <tbody id="ledger-body">
+                                <!-- Dynamic rows loaded by app.js -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Empty State -->
+                    <div id="table-empty-state" class="empty-state">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                        <h4>No snapshots found</h4>
+                        <p>Configure Data Sources or add manual snapshots to start tracking.</p>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Data Sources Management Section -->
+            <div id="tab-sources" class="tab-content-pane hidden">
+                <header class="top-header">
+                    <div class="header-info">
+                        <h1>Data Feeds Manager</h1>
+                        <p class="subtitle">Connect and aggregate multiple Google Sheets published CSV links</p>
+                    </div>
+                    <div class="header-actions">
+                        <button id="btn-sync-all" class="btn btn-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                            <span>Sync All Feeds</span>
+                        </button>
+                        <button id="btn-enable-all" class="btn btn-secondary">Enable All</button>
+                        <button id="btn-disable-all" class="btn btn-secondary">Disable All</button>
+                    </div>
+                </header>
+
+                <div class="sources-layout">
+                    <!-- Left Column: Add Source Form -->
+                    <div class="sources-form-column">
+                        <div class="glass-card sources-form-card">
+                            <h3>Add CSV Data Feed</h3>
+                            <p class="section-subtitle" style="margin-top: 0.25rem; margin-bottom: 1rem;">
+                                Enter a descriptive label and your published Google Sheets CSV URL.
+                            </p>
+                            <form id="form-add-source" class="modal-form">
+                                <div class="form-group">
+                                    <label for="input-source-name">Source Label</label>
+                                    <input type="text" id="input-source-name" placeholder="e.g. META NASDAQ Feed" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="input-source-url">Published CSV URL</label>
+                                    <input type="url" id="input-source-url" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv" required>
+                                </div>
+                                <div class="form-group" style="flex-direction: row; align-items: center; gap: 0.5rem; justify-content: flex-start;">
+                                    <input type="checkbox" id="input-source-enabled" style="width: auto; margin-top: 0;" checked>
+                                    <label for="input-source-enabled" style="cursor: pointer; user-select: none; font-size: 0.85rem; font-weight: 600;">Enable immediately</label>
+                                </div>
+                                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">Add Data Source</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Feeds Cards Grid -->
+                    <div class="sources-grid-column">
+                        <div id="sources-grid" class="sources-grid">
+                            <!-- Dynamic source cards populated by app.js -->
+                        </div>
+                        <div id="sources-empty-state" class="empty-state">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                            <h4>No Data Sources Added</h4>
+                            <p>Configure your first Google Sheets published CSV feed on the left to populate the dashboard.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Developer Logs Section -->
+            <div id="tab-logs" class="tab-content-pane hidden">
+                <header class="top-header">
+                    <div class="header-info">
+                        <h1>Developer Logs</h1>
+                        <p class="subtitle">Runtime events, data-feed failures, and parsing diagnostics</p>
+                    </div>
+                    <div class="header-actions">
+                        <button id="btn-export-logs" class="btn btn-secondary">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span>Export Logs</span>
+                        </button>
+                        <button id="btn-clear-logs" class="btn btn-secondary">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            <span>Clear Logs</span>
+                        </button>
+                    </div>
+                </header>
+
+                <section class="logs-summary-grid">
+                    <div class="log-stat-card glass-card">
+                        <span class="metric-title">Total Events</span>
+                        <strong id="log-total-count">0</strong>
+                    </div>
+                    <div class="log-stat-card glass-card danger">
+                        <span class="metric-title">Errors</span>
+                        <strong id="log-error-summary">0</strong>
+                    </div>
+                    <div class="log-stat-card glass-card">
+                        <span class="metric-title">Latest Event</span>
+                        <strong id="log-latest-time">None</strong>
+                    </div>
+                </section>
+
+                <section class="logs-section glass-card">
+                    <div class="section-header flex-wrap">
+                        <div class="section-title-area">
+                            <h3>Diagnostic Timeline</h3>
+                            <p class="section-subtitle">Filter failures by severity or subsystem while debugging feeds and runtime behavior.</p>
+                        </div>
+                        <div class="filters-wrapper">
+                            <select id="log-level-filter" class="filter-select">
+                                <option value="ALL">All Levels</option>
+                                <option value="ERROR">Errors</option>
+                                <option value="WARN">Warnings</option>
+                                <option value="INFO">Info</option>
+                                <option value="DEBUG">Debug</option>
+                            </select>
+                            <select id="log-category-filter" class="filter-select">
+                                <option value="ALL">All Categories</option>
+                                <option value="API">API</option>
+                                <option value="CSV">CSV</option>
+                                <option value="RUNTIME">Runtime</option>
+                                <option value="STORAGE">Storage</option>
+                                <option value="UI">UI</option>
+                                <option value="SYSTEM">System</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="logs-list" class="logs-list"></div>
+                    <div id="logs-empty-state" class="empty-state">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/><path d="M8 10h8"/><path d="M8 14h5"/></svg>
+                        <h4>No logs found</h4>
+                        <p>Runtime and data-source diagnostics will appear here.</p>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for Adding Snapshot -->
+    <div id="modal-snapshot" class="modal-backdrop hidden">
+        <div class="modal-card glass-card animate-zoom">
+            <div class="modal-header">
+                <h3>Add Snapshot Record</h3>
+                <button id="modal-close" class="btn-close">×</button>
+            </div>
+            <form id="form-add-snapshot" class="modal-form">
+                <div class="form-row">
+                    <div class="form-group col-6">
+                        <label for="input-ticker">Ticker symbol</label>
+                        <input type="text" id="input-ticker" placeholder="e.g. META" required>
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="input-exchange">Exchange</label>
+                        <input type="text" id="input-exchange" placeholder="e.g. NASDAQ" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group col-6">
+                        <label for="input-price">Today's Price ($)</label>
+                        <input type="number" id="input-price" step="0.01" min="0.01" placeholder="e.g. 570.26" required>
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="input-shares">Shares Bought</label>
+                        <input type="number" id="input-shares" min="0" step="1" value="0" placeholder="e.g. 1" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="input-timestamp">Timestamp</label>
+                    <input type="text" id="input-timestamp" placeholder="YYYY-MM-DD HH:MM:SS (leave blank for current time)">
+                </div>
+
+                <div class="form-group">
+                    <label for="input-decision">Decision Type</label>
+                    <select id="input-decision" class="form-select">
+                        <option value="AUTO">Auto-determine (BUY if shares > 0, else NO BUY)</option>
+                        <option value="BUY">BUY</option>
+                        <option value="NO BUY">NO BUY</option>
+                        <option value="FIRST SNAPSHOT">FIRST SNAPSHOT</option>
+                    </select>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" id="modal-cancel" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Snapshot</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
