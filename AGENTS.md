@@ -2,11 +2,17 @@
 
 This repository is a static browser app for tracking a stock portfolio and trading journal. It has no build step, package manager, backend, or database. Open `index.html` in a browser to run it.
 
+Current working directory:
+
+```text
+/Users/hardik/Documents/antigravity/Project TradeSphere
+```
+
 ## File Map
 
 - `index.html` defines the whole UI shell: sidebar navigation, dashboard metrics, chart canvas, transaction ledger table, data-source manager, manual snapshot modal, toast container, and script/style includes.
 - `style.css` contains the full visual system: dark/light theme variables, responsive layout, cards, tables, forms, data-source cards, modal, toast, and breakpoints.
-- `app.js` contains all runtime behavior through class-based modules: state loading/saving, developer logging, CSV parsing, source syncing, portfolio calculations, rendering, filters, sorting, chart creation, import/export, modal handling, and theme switching.
+- `app.js` contains all runtime behavior through class-based modules: state loading/saving, developer logging, CSV parsing, source syncing, raw journal rendering, filters, sorting, chart creation, import/export, modal handling, and theme switching.
 
 ## Runtime Dependencies
 
@@ -25,7 +31,7 @@ There is no local dependency install command and no automated test runner in the
 2. `StorageService` restores saved data sources and manual snapshots.
 3. The saved `theme` is applied to `<html data-theme>`, defaulting to `dark`.
 4. Event handlers and global runtime error traps are registered.
-5. `syncUi()` computes the ledger, then updates metrics, table, ticker filter, source cards, chart, and logs.
+5. `syncUi()` rebuilds app state, then updates metrics, the raw API-shaped journal table, ticker filter, source cards, chart, and logs.
 6. If enabled sources exist, `syncAllSources(false)` silently refreshes feeds.
 
 The central refresh path is:
@@ -43,7 +49,7 @@ PortfolioApp.syncUi()
   -> renderLogs()
 ```
 
-Prefer using this path after data changes so all derived UI stays consistent.
+Prefer using this path after data changes so all views stay consistent.
 
 ## State Model
 
@@ -51,17 +57,17 @@ Top-level mutable state in `app.js`:
 
 - `sources`: saved CSV data-source definitions.
 - `manualSnapshots`: snapshots added by modal or local CSV import.
-- `snapshots`: derived master ledger from manual snapshots plus enabled source feeds.
+- `snapshots`: aggregated rows from manual snapshots plus enabled source feeds. Rows preserve raw API headers and raw API cells.
 - `portfolioChartInstance`: current Chart.js instance, destroyed and recreated by `renderChart()`.
 - `currentChartTab`: either `portfolio` or `prices`.
 - `sortColumn` and `sortAscending`: current ledger table sort.
-- `STARTING_CASH`: currently `0.00`, used as the running cash baseline.
+- `sortColumn` can be `null` for API order, or `raw:<index>` when the user explicitly sorts a raw API column.
 
 LocalStorage keys:
 
 - `trading_sources`: persisted `sources`.
 - `trading_manual_snapshots`: persisted manual snapshots.
-- `trading_snapshots`: persisted derived snapshots, written for convenience but recalculated from source/manual data.
+- `trading_snapshots`: persisted aggregated snapshots, written for convenience and rebuilt from source/manual data.
 - `trading_dev_logs`: persisted developer diagnostics shown in the Developer Logs tab.
 - `theme`: `dark` or `light`.
 
@@ -83,7 +89,7 @@ Data source object:
 }
 ```
 
-Raw snapshot input:
+Parsed snapshot shape:
 
 ```js
 {
@@ -92,25 +98,25 @@ Raw snapshot input:
   exchange: "NASDAQ",
   todayPrice: 570.26,
   sharesBought: 1,
-  decision: "AUTO" | "BUY" | "NO BUY" | "FIRST SNAPSHOT"
+  decision: "BUY" | "NO BUY" | "FIRST SNAPSHOT" | "AUTO",
+  rawHeaders: ["Timestamp", "Ticker", "..."],
+  rawCells: ["2026-06-13 08:41:05", "META", "..."],
+  raw: {
+    timestamp: "2026-06-13 08:41:05",
+    ticker: "META",
+    exchange: "NASDAQ",
+    todayPrice: "$566.98",
+    decision: "BUY",
+    totalShares: "3"
+  }
 }
 ```
 
-`calculateLedger()` mutates each snapshot with derived fields:
-
-- `prevPrice`
-- `purchaseCost`
-- `cashRemaining`
-- `totalShares`
-- `totalSpent`
-- `avgPurchasePrice`
-- `portfolioValue`
-- `profitLoss`
-- `returnPct`
+Important display rule: `rawHeaders` and `rawCells` are the source of truth for the Transaction Log Journal. Do not replace them with app-specific column names or calculated values.
 
 ## CSV Expectations
 
-`parseAndExtractCSV(text)` uses a small character-scanner CSV parser that supports quoted fields and escaped quotes. It detects columns by normalized header names rather than exact labels.
+`CsvParser.parse(text)` uses a small character-scanner CSV parser that supports quoted fields and escaped quotes. It keeps the original header names and original cell values for display, while also detecting a few columns for filtering/searching.
 
 Required concepts:
 
@@ -124,32 +130,32 @@ Optional concepts:
 - exchange column: header includes `exchang`; defaults to `NASDAQ`
 - decision column: header includes `decision`; defaults to `AUTO`
 
-Number parsing removes `$`, `,`, and `%`. Shares are rounded to whole numbers.
+Number parsing is only for internal filtering/chart support. It must not be used to alter displayed Transaction Log Journal values.
 
-## Portfolio Calculation Rules
+## Journal Display Rules
 
-`calculateLedger()` merges manual snapshots and enabled source rows, sorts everything by ascending timestamp, and processes the timeline in order.
+The Transaction Log Journal is an API document viewer, not a calculator.
 
-- `AUTO` becomes `BUY` if `sharesBought > 0`.
-- `AUTO` becomes `FIRST SNAPSHOT` for a ticker with no previous price.
-- Otherwise `AUTO` becomes `NO BUY`.
-- Only `BUY` rows change cash, total shares, and total spent.
-- Each row stores the previous price for its ticker.
-- Portfolio value is `runningCash + current value of all holdings`, using the current row's price for its ticker and the latest known prior price for other tickers.
-- Profit/loss and return percentage are currently populated only on `BUY` rows.
+- Headers must come from the API CSV header row exactly.
+- Row values must come from the API CSV cells exactly.
+- Do not show app-specific replacement labels such as `Qty`, `Cash Left`, `Holdings`, `Avg Price`, or `Port. Value`.
+- Do not add an `Actions` column to feed rows in the Transaction Log Journal.
+- Do not calculate, format, round, uppercase, or fallback-fill journal cell values.
+- Do not sort rows by default. Preserve API order unless the user explicitly clicks a column header.
+- If the API says `Total Shares` is `3`, the UI must show `3`.
 
-Important: `STARTING_CASH` is `0.00`, so buying shares creates negative cash and `returnPct` is forced to `0` to avoid division by zero. If the app should represent a funded account, change this constant and review all metric labels.
+`LedgerEngine.compute()` may mark rows with helper fields such as `isBuy` for filtering/metrics, but it must not calculate or overwrite journal display cells.
 
 ## UI Behavior
 
 - Dashboard metrics read raw API values from the most recent `BUY` snapshot when one exists. Do not calculate fallback values for these cards.
-- The table supports search by ticker/exchange, decision filtering, ticker filtering, sortable columns, and manual-row deletion.
-- The Transaction Log Journal must display API/imported cell values exactly as received. Do not format, round, or calculate fallback values for API-provided columns.
+- The Transaction Log Journal supports search by ticker/exchange, decision filtering, ticker filtering, and explicit user-triggered sorting.
+- The Transaction Log Journal must display API/imported headers and cell values exactly as received. Do not format, round, rename, calculate, or fallback-fill API columns.
 - Feed rows are not deleted from the ledger directly; remove or disable their source instead.
 - The Data Sources tab can add, enable, disable, delete, sync one feed, or sync all feeds.
 - The Developer Logs tab, located above the theme toggle in the sidebar, shows persisted runtime/API/CSV/storage diagnostics.
 - CSV import appends parsed rows to `manualSnapshots`.
-- CSV export downloads the derived `snapshots` ledger.
+- CSV export downloads the same raw API-shaped headers and cells used by the Transaction Log Journal.
 - Theme switching updates `data-theme`, saves `theme`, and redraws the chart.
 
 ## Developer Logging
@@ -176,9 +182,9 @@ The CSS uses theme variables extensively. When adding UI:
 
 ## Known Maintenance Issues
 
-- Some table/source card rendering still uses `innerHTML`. If CSV/source values may come from untrusted users, sanitize text or switch those renderers to DOM text nodes.
-- The ledger parser stores raw API cell values under `row.raw`. Treat these as the display source of truth.
-- Timestamp sorting depends on strings that `new Date()` can parse. Normalize timestamp input if feeds vary by locale or format.
+- Some source card rendering still uses `innerHTML`. If source labels/URLs may come from untrusted users, sanitize text or switch those renderers to DOM text nodes.
+- The parser stores raw API headers under `row.rawHeaders` and raw API cells under `row.rawCells`. Treat these as the display source of truth.
+- Timestamp parsing is used only for helper behavior. Do not let timestamp parsing reorder the journal by default.
 - `syncAllSources()` calls `syncSource()`, and each `syncSource()` calls `syncUi()`. With many feeds this can render repeatedly.
 
 ## Suggested Validation
@@ -191,11 +197,12 @@ node --check app.js
 
 Then open `index.html` and test:
 
-1. Add a manual `FIRST SNAPSHOT` row.
-2. Add a manual `BUY` row.
-3. Filter and sort the ledger.
-4. Toggle between chart modes.
-5. Import and export CSV.
-6. Add a public CSV source and sync it.
+1. Add a public CSV source and sync it.
+2. Confirm Transaction Log Journal headers exactly match the API headers.
+3. Confirm a row with API `Total Shares` value `3` shows `3`, not a locally accumulated value.
+4. Confirm blank API cells remain blank.
+5. Filter and explicitly sort the journal.
+6. Import and export CSV.
 7. Add a deliberately bad source URL and confirm the Developer Logs tab shows an API failure with details.
-8. Toggle light/dark theme.
+8. Toggle between chart modes.
+9. Toggle light/dark theme.
