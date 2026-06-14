@@ -1563,6 +1563,11 @@ body .modal-header h3 {
     justify-content: flex-end;
 }
 
+.header-ticker-select {
+    min-width: 160px;
+    max-width: 220px;
+}
+
 .header-status-chips {
     display: flex;
     align-items: center;

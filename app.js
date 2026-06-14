@@ -410,8 +410,8 @@ class PortfolioApp {
             "input-source-name", "input-source-url", "input-source-enabled", "toast",
             "ledger-body", "table-empty-state", "sources-grid", "sources-empty-state",
             "portfolioChart", "metric-portfolio-val", "metric-pl-container", "trend-icon-pl",
-            "metric-pl-val", "metric-pl-pct", "metric-cash", "metric-assets-val",
-            "metric-shares-held", "metric-avg-price", "metric-total-spent", "log-level-filter",
+            "metric-pl-val", "metric-pl-pct", "metric-cash",
+            "metric-avg-price", "metric-total-spent", "log-level-filter",
             "log-category-filter", "btn-clear-logs", "btn-export-logs", "logs-list",
             "logs-empty-state", "log-total-count", "log-error-summary", "log-latest-time",
             "log-error-count", "status-last-sync"
@@ -461,7 +461,11 @@ class PortfolioApp {
 
         this.cache["search-input"].addEventListener("input", () => this.renderTable());
         this.cache["filter-decision"].addEventListener("change", () => this.renderTable());
-        this.cache["filter-ticker"].addEventListener("change", () => { this.renderTable(); if (this.state.currentChartTab === "prices") this.renderChart(); });
+        this.cache["filter-ticker"].addEventListener("change", () => {
+            this.renderMetrics();
+            this.renderTable();
+            this.renderChart();
+        });
 
         document.querySelectorAll(".sortable").forEach((header) => {
             header.addEventListener("click", () => this.sortByHeader(header.getAttribute("data-sort")));
@@ -954,7 +958,8 @@ class PortfolioApp {
 
     renderMetrics() {
         const s = this.state.snapshots;
-        const buyRows = s.filter((row) => row.isBuy);
+        const selectedTicker = this.getSelectedTickerFilter();
+        const buyRows = s.filter((row) => row.isBuy && (selectedTicker === "ALL" || row.ticker.toUpperCase() === selectedTicker));
         if (buyRows.length === 0) {
             this.setText("metric-portfolio-val", "—");
             this.cache["metric-pl-container"].className = "metric-change neutral";
@@ -962,8 +967,6 @@ class PortfolioApp {
             this.setText("metric-pl-val", "—");
             this.setText("metric-pl-pct", "");
             this.setText("metric-cash", "—");
-            this.setText("metric-assets-val", "—");
-            this.setText("metric-shares-held", "No active holdings");
             this.setText("metric-avg-price", "—");
             this.setText("metric-total-spent", "Total Spent: —");
             return;
@@ -981,9 +984,6 @@ class PortfolioApp {
         this.setText("metric-pl-pct", display.returnPct ? `(${display.returnPct})` : "");
 
         this.setText("metric-cash", display.cashRemaining || "—");
-        this.setText("metric-assets-val", "—");
-
-        this.setText("metric-shares-held", display.totalShares ? `${display.totalShares} ${display.ticker} held` : "No active holdings");
         this.setText("metric-avg-price", display.avgPurchasePrice || "—");
         this.setText("metric-total-spent", `Total Spent: ${display.totalSpent || "—"}`);
     }
@@ -995,7 +995,7 @@ class PortfolioApp {
 
         const search = this.cache["search-input"].value.toLowerCase().trim();
         const decisionFilter = this.cache["filter-decision"].value;
-        const tickerFilter = this.cache["filter-ticker"].value.toUpperCase();
+        const tickerFilter = this.getSelectedTickerFilter();
 
         let filtered = this.state.snapshots.filter((row) => {
             const matchesSearch = row.ticker.toLowerCase().includes(search) || row.exchange.toLowerCase().includes(search);
@@ -1179,6 +1179,7 @@ class PortfolioApp {
 
     populateTickerFilter() {
         const select = this.cache["filter-ticker"];
+        if (!select) return;
         const current = select.value;
         const tickers = [...new Set(this.state.snapshots.map((s) => s.ticker.toUpperCase()))].sort();
         select.innerHTML = '<option value="ALL">All Tickers</option>';
@@ -1189,6 +1190,11 @@ class PortfolioApp {
             select.appendChild(option);
         });
         if (tickers.includes(current)) select.value = current;
+    }
+
+    getSelectedTickerFilter() {
+        const select = this.cache["filter-ticker"];
+        return select ? String(select.value || "ALL").toUpperCase() : "ALL";
     }
 
     renderStatusChips() {
@@ -1411,7 +1417,9 @@ class PortfolioApp {
         if (!canvas || !window.Chart) return;
         const ctx = canvas.getContext("2d");
         if (this.state.portfolioChartInstance) this.state.portfolioChartInstance.destroy();
-        if (this.state.snapshots.length === 0) return;
+        const selectedTicker = this.getSelectedTickerFilter();
+        const buySnapshots = this.state.snapshots.filter((row) => row.isBuy && (selectedTicker === "ALL" || row.ticker.toUpperCase() === selectedTicker));
+        if (buySnapshots.length === 0) return;
 
         const isDark = document.documentElement.getAttribute("data-theme") === "dark";
         const gridColor = isDark ? "rgba(255, 255, 255, 0.03)" : "rgba(15, 23, 42, 0.08)";
@@ -1433,8 +1441,8 @@ class PortfolioApp {
         };
 
         if (this.state.currentChartTab === "portfolio") {
-            const labels = this.state.snapshots.map((s) => s.timestamp.substring(5, 16));
-            const portfolioValues = this.state.snapshots.map((s) => s.portfolioValue);
+            const labels = buySnapshots.map((s) => s.timestamp.substring(5, 16));
+            const portfolioValues = buySnapshots.map((s) => s.portfolioValue);
             const gradient = ctx.createLinearGradient(0, 0, 0, 300);
             gradient.addColorStop(0, "rgba(212, 175, 55, 0.2)");
             gradient.addColorStop(1, "rgba(5, 5, 5, 0)");
@@ -1475,17 +1483,19 @@ class PortfolioApp {
         }
 
         const tickers = [...new Set(this.state.snapshots.map((s) => s.ticker.toUpperCase()))];
-        let selectedTicker = this.cache["filter-ticker"].value;
-        if (selectedTicker === "ALL") selectedTicker = tickers[0] || "";
-        if (!selectedTicker) return;
-        const tickerSnapshots = this.state.snapshots.filter((s) => s.ticker.toUpperCase() === selectedTicker);
+        const buyTickers = [...new Set(buySnapshots.map((s) => s.ticker.toUpperCase()))];
+        let chartTicker = this.getSelectedTickerFilter();
+        if (chartTicker === "ALL") chartTicker = buyTickers[0] || tickers[0] || "";
+        if (!chartTicker) return;
+        const tickerSnapshots = buySnapshots.filter((s) => s.ticker.toUpperCase() === chartTicker);
+        if (tickerSnapshots.length === 0) return;
 
         this.state.portfolioChartInstance = new Chart(ctx, {
             type: "line",
             data: {
                 labels: tickerSnapshots.map((s) => s.timestamp.substring(5, 16)),
                 datasets: [
-                    { label: `${selectedTicker} Price ($)`, data: tickerSnapshots.map((s) => s.todayPrice), borderColor: goldPrimary, borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 6, pointBackgroundColor: goldLight, pointBorderColor: "rgba(5, 5, 5, 0.85)", pointBorderWidth: 1, tension: 0.32, fill: false },
+                    { label: `${chartTicker} Price ($)`, data: tickerSnapshots.map((s) => s.todayPrice), borderColor: goldPrimary, borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 6, pointBackgroundColor: goldLight, pointBorderColor: "rgba(5, 5, 5, 0.85)", pointBorderWidth: 1, tension: 0.32, fill: false },
                     { label: "Avg Purchase Cost ($)", data: tickerSnapshots.map((s) => s.avgPurchasePrice), borderColor: goldDim, borderWidth: 2.25, borderDash: [6, 6], pointRadius: 0, tension: 0.18, fill: false }
                 ]
             },
