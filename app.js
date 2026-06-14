@@ -414,7 +414,7 @@ class PortfolioApp {
             "metric-shares-held", "metric-avg-price", "metric-total-spent", "log-level-filter",
             "log-category-filter", "btn-clear-logs", "btn-export-logs", "logs-list",
             "logs-empty-state", "log-total-count", "log-error-summary", "log-latest-time",
-            "log-error-count"
+            "log-error-count", "status-last-sync"
         ];
         ids.forEach((id) => (this.cache[id] = document.getElementById(id)));
     }
@@ -445,6 +445,7 @@ class PortfolioApp {
         this.renderTable();
         this.populateTickerFilter();
         this.renderSources();
+        this.renderStatusChips();
         this.renderChart();
         this.renderLogs();
     }
@@ -1019,10 +1020,11 @@ class PortfolioApp {
         const fragment = document.createDocumentFragment();
         for (const row of filtered) {
             const tr = document.createElement("tr");
-            headers.forEach((_header, index) => {
+            headers.forEach((header, index) => {
                 const td = document.createElement("td");
-                td.textContent = this.getRawJournalCell(row, index);
-                if (this.isNumericLikeCell(td.textContent)) td.classList.add("text-right", "font-mono");
+                const value = this.getRawJournalCell(row, index);
+                td.textContent = value;
+                this.decorateJournalCell(td, header, value);
                 tr.appendChild(td);
             });
             fragment.appendChild(tr);
@@ -1057,6 +1059,39 @@ class PortfolioApp {
 
     getRawJournalCell(row, index) {
         return Array.isArray(row.rawCells) ? String(row.rawCells[index] ?? "") : "";
+    }
+
+    decorateJournalCell(cell, header, value) {
+        const normalizedHeader = CsvParser.cleanHeader(header);
+        const rawValue = String(value ?? "");
+
+        if (this.isNumericLikeCell(rawValue)) cell.classList.add("text-right", "font-mono");
+        if (normalizedHeader.includes("tick")) cell.classList.add("ticker-cell");
+        if (normalizedHeader.includes("decision") && rawValue.trim()) {
+            const badge = document.createElement("span");
+            badge.className = `badge ${this.getDecisionBadgeClass(rawValue)}`;
+            badge.textContent = rawValue;
+            cell.textContent = "";
+            cell.classList.add("decision-cell", "text-center");
+            cell.appendChild(badge);
+        }
+        if (this.isPerformanceHeader(normalizedHeader) && rawValue.trim()) {
+            const numericValue = CsvParser.cleanNumber(rawValue);
+            cell.classList.add(numericValue > 0 ? "positive" : numericValue < 0 ? "negative" : "neutral");
+        }
+    }
+
+    getDecisionBadgeClass(value) {
+        const normalizedValue = String(value || "").trim().toUpperCase();
+        if (normalizedValue === "BUY") return "buy";
+        if (normalizedValue === "SELL") return "sell";
+        if (normalizedValue === "NO BUY") return "nobuy";
+        if (normalizedValue === "FIRST SNAPSHOT") return "first";
+        return "neutral";
+    }
+
+    isPerformanceHeader(normalizedHeader) {
+        return normalizedHeader.includes("profit") || normalizedHeader.includes("loss") || normalizedHeader.includes("return");
     }
 
     isNumericLikeCell(value) {
@@ -1154,6 +1189,25 @@ class PortfolioApp {
             select.appendChild(option);
         });
         if (tickers.includes(current)) select.value = current;
+    }
+
+    renderStatusChips() {
+        const chip = this.cache["status-last-sync"];
+        if (!chip) return;
+
+        const syncedSources = this.state.sources
+            .filter((source) => source.enabled && source.lastSync && source.lastSync !== "Never")
+            .sort((a, b) => (Date.parse(b.lastSync) || 0) - (Date.parse(a.lastSync) || 0));
+
+        if (syncedSources.length === 0) {
+            chip.textContent = this.state.sources.some((source) => source.enabled) ? "Last Sync: Waiting" : "Last Sync: No feeds";
+            chip.title = "No feed has completed a sync in this browser yet.";
+            return;
+        }
+
+        const latest = syncedSources[0];
+        chip.textContent = `Last Sync: ${latest.lastSync}`;
+        chip.title = `${latest.name} synced at ${latest.lastSync}`;
     }
 
     renderSources() {
@@ -1335,6 +1389,23 @@ class PortfolioApp {
         }
     }
 
+    createChartGlowPlugin(color) {
+        return {
+            id: `datasetGlow${Date.now()}`,
+            beforeDatasetDraw(chart) {
+                const { ctx } = chart;
+                ctx.save();
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 18;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+            },
+            afterDatasetDraw(chart) {
+                chart.ctx.restore();
+            }
+        };
+    }
+
     renderChart() {
         const canvas = this.cache["portfolioChart"];
         if (!canvas || !window.Chart) return;
@@ -1343,25 +1414,62 @@ class PortfolioApp {
         if (this.state.snapshots.length === 0) return;
 
         const isDark = document.documentElement.getAttribute("data-theme") === "dark";
-        const gridColor = isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)";
-        const textColor = isDark ? "#94a3b8" : "#4b5563";
+        const gridColor = isDark ? "rgba(255, 255, 255, 0.03)" : "rgba(15, 23, 42, 0.08)";
+        const textColor = isDark ? "#A89B82" : "#5f533c";
+        const goldPrimary = "#D4AF37";
+        const goldLight = "#F3E5AB";
+        const goldDim = "#8A7330";
+        const tooltipOptions = {
+            backgroundColor: isDark ? "rgba(10, 10, 10, 0.94)" : "rgba(255, 255, 255, 0.95)",
+            titleColor: isDark ? "#F3E5AB" : "#3a2f12",
+            bodyColor: isDark ? "#F5F5F5" : "#1f2937",
+            borderColor: isDark ? "rgba(212, 175, 55, 0.28)" : "rgba(120, 86, 13, 0.22)",
+            borderWidth: 1,
+            padding: 12,
+            cornerRadius: 10,
+            displayColors: false,
+            mode: "index",
+            intersect: false
+        };
 
         if (this.state.currentChartTab === "portfolio") {
             const labels = this.state.snapshots.map((s) => s.timestamp.substring(5, 16));
             const portfolioValues = this.state.snapshots.map((s) => s.portfolioValue);
             const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-            gradient.addColorStop(0, "rgba(99, 102, 241, 0.35)");
-            gradient.addColorStop(1, "rgba(99, 102, 241, 0.01)");
+            gradient.addColorStop(0, "rgba(212, 175, 55, 0.2)");
+            gradient.addColorStop(1, "rgba(5, 5, 5, 0)");
 
             this.state.portfolioChartInstance = new Chart(ctx, {
                 type: "line",
-                data: { labels, datasets: [{ label: "Portfolio Value ($)", data: portfolioValues, borderColor: "#6366f1", borderWidth: 3, pointRadius: 4, pointHoverRadius: 6, backgroundColor: gradient, fill: true, tension: 0.3 }] },
+                data: {
+                    labels,
+                    datasets: [{
+                        label: "Portfolio Value ($)",
+                        data: portfolioValues,
+                        borderColor: goldPrimary,
+                        borderWidth: 3,
+                        pointRadius: portfolioValues.map((_value, index) => index === portfolioValues.length - 1 ? 5 : 2.5),
+                        pointHoverRadius: 7,
+                        pointBackgroundColor: portfolioValues.map((_value, index) => index === portfolioValues.length - 1 ? goldLight : "rgba(212, 175, 55, 0.86)"),
+                        pointBorderColor: "rgba(5, 5, 5, 0.9)",
+                        pointBorderWidth: 1.25,
+                        backgroundColor: gradient,
+                        fill: true,
+                        tension: 0.38
+                    }]
+                },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false }, tooltip: { mode: "index", intersect: false, callbacks: { label: (c) => `Value: ${this.formatCurrency(c.parsed.y)}` } } },
-                    scales: { x: { grid: { display: false }, ticks: { color: textColor, maxTicksLimit: 12 } }, y: { grid: { color: gridColor }, ticks: { color: textColor, callback: (v) => "$" + Number(v).toLocaleString() } } }
-                }
+                    interaction: { mode: "index", intersect: false },
+                    layout: { padding: { top: 10, right: 16, bottom: 2, left: 4 } },
+                    plugins: { legend: { display: false }, tooltip: { ...tooltipOptions, callbacks: { label: (c) => `Value: ${this.formatCurrency(c.parsed.y)}` } } },
+                    scales: {
+                        x: { grid: { display: false }, border: { display: false }, ticks: { color: textColor, maxTicksLimit: 10, font: { weight: "600" } } },
+                        y: { grid: { color: gridColor, drawTicks: false }, border: { display: false }, ticks: { color: textColor, padding: 10, callback: (v) => "$" + Number(v).toLocaleString() } }
+                    }
+                },
+                plugins: [this.createChartGlowPlugin("rgba(212, 175, 55, 0.35)")]
             });
             return;
         }
@@ -1377,16 +1485,22 @@ class PortfolioApp {
             data: {
                 labels: tickerSnapshots.map((s) => s.timestamp.substring(5, 16)),
                 datasets: [
-                    { label: `${selectedTicker} Price ($)`, data: tickerSnapshots.map((s) => s.todayPrice), borderColor: "#06b6d4", borderWidth: 2, pointRadius: 4, tension: 0.2, fill: false },
-                    { label: "Avg Purchase Cost ($)", data: tickerSnapshots.map((s) => s.avgPurchasePrice), borderColor: "#a855f7", borderWidth: 2.5, borderDash: [5, 5], pointRadius: 0, tension: 0.1, fill: false }
+                    { label: `${selectedTicker} Price ($)`, data: tickerSnapshots.map((s) => s.todayPrice), borderColor: goldPrimary, borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 6, pointBackgroundColor: goldLight, pointBorderColor: "rgba(5, 5, 5, 0.85)", pointBorderWidth: 1, tension: 0.32, fill: false },
+                    { label: "Avg Purchase Cost ($)", data: tickerSnapshots.map((s) => s.avgPurchasePrice), borderColor: goldDim, borderWidth: 2.25, borderDash: [6, 6], pointRadius: 0, tension: 0.18, fill: false }
                 ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: true, labels: { color: textColor, font: { weight: "600" } } }, tooltip: { mode: "index", intersect: false, callbacks: { label: (c) => `${c.dataset.label.split(" ")[0]}: ${this.formatCurrency(c.parsed.y)}` } } },
-                scales: { x: { grid: { display: false }, ticks: { color: textColor, maxTicksLimit: 12 } }, y: { grid: { color: gridColor }, ticks: { color: textColor, callback: (v) => "$" + Number(v).toFixed(2) } } }
-            }
+                interaction: { mode: "index", intersect: false },
+                layout: { padding: { top: 8, right: 16, bottom: 2, left: 4 } },
+                plugins: { legend: { display: true, labels: { color: textColor, boxWidth: 9, boxHeight: 9, usePointStyle: true, font: { weight: "700" } } }, tooltip: { ...tooltipOptions, callbacks: { label: (c) => `${c.dataset.label.split(" ")[0]}: ${this.formatCurrency(c.parsed.y)}` } } },
+                scales: {
+                    x: { grid: { display: false }, border: { display: false }, ticks: { color: textColor, maxTicksLimit: 10, font: { weight: "600" } } },
+                    y: { grid: { color: gridColor, drawTicks: false }, border: { display: false }, ticks: { color: textColor, padding: 10, callback: (v) => "$" + Number(v).toFixed(2) } }
+                }
+            },
+            plugins: [this.createChartGlowPlugin("rgba(212, 175, 55, 0.28)")]
         });
     }
 
