@@ -377,14 +377,16 @@ class PortfolioApp {
             portfolioChartInstance: null,
             currentChartTab: "portfolio",
             sortColumn: null,
-            sortAscending: true
+            sortAscending: true,
+            tickerSymbolMap: {}
         };
         this.cache = {};
     }
 
-    init() {
+    async init() {
         this.cacheElements();
         this.logger.subscribe(() => this.renderLogs());
+        await this.loadTickerSymbolMap();
         this.loadState();
         this.applyTheme(this.storage.getTheme(), false);
         this.bindEvents();
@@ -422,6 +424,7 @@ class PortfolioApp {
     loadState() {
         this.state.sources = this.storage.get("sources", []);
         this.state.manualSnapshots = this.storage.get("manual_snapshots", []);
+        this.state.sources = this.state.sources.map((source) => this.hydrateSource(source));
     }
 
     persistState() {
@@ -675,9 +678,11 @@ class PortfolioApp {
 
     addSource(name, url, enabled) {
         const normalizedUrl = this.normalizeSourceUrl(url);
+        const tickerSymbol = this.resolveTickerSymbol(name);
         const source = {
             id: `src_${Date.now()}`,
             name,
+            tickerSymbol,
             url: normalizedUrl,
             enabled,
             status: "pending",
@@ -692,11 +697,97 @@ class PortfolioApp {
         this.logger.info("API", "Data source added", {
             sourceId: source.id,
             sourceName: source.name,
+            tickerSymbol: source.tickerSymbol,
             originalUrl: url,
             normalizedUrl,
             enabled
         });
         if (enabled) this.syncSource(source, true);
+    }
+
+    editSource(id) {
+        const source = this.state.sources.find((s) => s.id === id);
+        if (!source) return;
+
+        const nextName = prompt("Update source name or ticker symbol:", source.name);
+        if (nextName === null) return;
+
+        const nextUrl = prompt("Update source CSV URL:", source.url);
+        if (nextUrl === null) return;
+
+        const trimmedName = nextName.trim();
+        const trimmedUrl = nextUrl.trim();
+        if (!trimmedName || !trimmedUrl) {
+            this.showToast("Source name and URL cannot be empty", "error");
+            return;
+        }
+
+        source.name = trimmedName;
+        source.tickerSymbol = this.resolveTickerSymbol(trimmedName);
+        source.url = this.normalizeSourceUrl(trimmedUrl);
+        source.status = "pending";
+        source.errorMessage = "";
+        source.cachedData = "";
+        source.recordCount = 0;
+        source.lastSync = "Never";
+
+        this.persistState();
+        this.syncUi();
+        this.logger.info("API", "Data source updated", {
+            sourceId: source.id,
+            sourceName: this.getSourceDisplayName(source),
+            tickerSymbol: source.tickerSymbol,
+            url: source.url
+        });
+
+        if (source.enabled) this.syncSource(source, true);
+        this.showToast("Source updated successfully", "success");
+    }
+
+    async loadTickerSymbolMap() {
+        try {
+            const response = await fetch("ticker-symbols.json", { cache: "no-store" });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            this.state.tickerSymbolMap = this.normalizeTickerMap(data);
+            this.logger.debug("SYSTEM", "Loaded ticker symbol lookup file", {
+                entries: Object.keys(this.state.tickerSymbolMap).length
+            });
+        } catch (error) {
+            this.state.tickerSymbolMap = {};
+            this.logger.warn("SYSTEM", "Ticker symbol lookup file could not be loaded", {
+                error
+            });
+        }
+    }
+
+    normalizeTickerMap(data) {
+        if (!data || typeof data !== "object") return {};
+        const normalized = {};
+        for (const [key, value] of Object.entries(data)) {
+            if (!value) continue;
+            normalized[this.normalizeLookupKey(key)] = String(value).trim().toUpperCase();
+        }
+        return normalized;
+    }
+
+    normalizeLookupKey(value) {
+        return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+    }
+
+    resolveTickerSymbol(value) {
+        const raw = String(value || "").trim();
+        if (!raw) return "";
+        if (/^[A-Z0-9.\-]{1,10}$/.test(raw) && raw === raw.toUpperCase()) return raw;
+        const normalizedKey = this.normalizeLookupKey(raw);
+        return this.state.tickerSymbolMap[normalizedKey] || raw.toUpperCase();
+    }
+
+    hydrateSource(source) {
+        if (!source || typeof source !== "object") return source;
+        const hydrated = { ...source };
+        hydrated.tickerSymbol = this.resolveTickerSymbol(hydrated.tickerSymbol || hydrated.name || "");
+        return hydrated;
     }
 
     normalizeSourceUrl(url) {
@@ -742,11 +833,11 @@ class PortfolioApp {
         this.renderSources();
         this.logger.info("API", `Source sync started for "${source.name}"`, {
             sourceId: source.id,
-            sourceName: source.name,
+            sourceName: this.getSourceDisplayName(source),
             url: source.url,
             candidates: this.buildSourceFetchCandidates(source.url).map((candidate) => candidate.label)
         });
-        if (showToasts) this.showToast(`Syncing "${source.name}"...`, "info");
+        if (showToasts) this.showToast(`Syncing "${this.getSourceDisplayName(source)}"...`, "info");
 
         try {
             const result = await this.fetchCsvWithFallbacks(source);
@@ -762,7 +853,7 @@ class PortfolioApp {
             source.errorMessage = "";
             this.logger.info("API", `Source sync succeeded for "${source.name}"`, {
                 sourceId: source.id,
-                sourceName: source.name,
+                sourceName: this.getSourceDisplayName(source),
                 status: response.status,
                 contentType,
                 candidate: candidate.label,
@@ -772,14 +863,14 @@ class PortfolioApp {
                 finalUrl: response.url || fetchUrl,
                 attempts
             });
-            if (showToasts) this.showToast(`"${source.name}" synced successfully!`, "success");
+            if (showToasts) this.showToast(`"${this.getSourceDisplayName(source)}" synced successfully!`, "success");
         } catch (error) {
             console.error(`Sync error on ${source.name}:`, error);
             source.status = "error";
             source.errorMessage = this.formatSyncError(error);
             this.logger.error("API", `Source sync failed for "${source.name}"`, {
                 sourceId: source.id,
-                sourceName: source.name,
+                sourceName: this.getSourceDisplayName(source),
                 url: source.url,
                 fetchUrl,
                 durationMs: Math.round(performance.now() - startedAt),
@@ -787,7 +878,7 @@ class PortfolioApp {
                 attempts,
                 renderedMessage: source.errorMessage
             });
-            if (showToasts) this.showToast(`Sync failed on "${source.name}"`, "error");
+            if (showToasts) this.showToast(`Sync failed on "${this.getSourceDisplayName(source)}"`, "error");
         }
 
         this.persistState();
@@ -921,7 +1012,7 @@ class PortfolioApp {
         }
         this.logger.info("API", "Sync all sources started", {
             activeSourceCount: active.length,
-            sourceNames: active.map((source) => source.name)
+            sourceNames: active.map((source) => this.getSourceDisplayName(source))
         });
         if (showToasts) this.showToast(`Syncing ${active.length} active feeds...`, "info");
         await Promise.all(active.map((src) => this.syncSource(src, false)));
@@ -1213,7 +1304,7 @@ class PortfolioApp {
 
         const latest = syncedSources[0];
         chip.textContent = `Last Sync: ${latest.lastSync}`;
-        chip.title = `${latest.name} synced at ${latest.lastSync}`;
+        chip.title = `${this.getSourceDisplayName(latest)} synced at ${latest.lastSync}`;
     }
 
     renderSources() {
@@ -1234,7 +1325,7 @@ class PortfolioApp {
             card.innerHTML = `
                 <div>
                     <div class="source-card-header">
-                        <div class="source-card-title">${src.name}</div>
+                        <div class="source-card-title">${this.escapeHtml(this.getSourceDisplayName(src))}</div>
                         <label class="switch">
                             <input type="checkbox" class="toggle-source-enable" data-id="${src.id}" ${src.enabled ? "checked" : ""}>
                             <span class="slider"></span>
@@ -1252,6 +1343,7 @@ class PortfolioApp {
                     ${src.status === "error" && src.errorMessage ? `<div class="source-card-error">${src.errorMessage}</div>` : ""}
                 </div>
                 <div class="source-card-footer">
+                    <button class="btn btn-secondary btn-icon-only btn-edit-source" data-id="${src.id}" title="Edit Data Source">✎</button>
                     <button class="btn btn-secondary btn-icon-only btn-sync-source" data-id="${src.id}" title="Force Refresh Sync">↻</button>
                     <button class="btn btn-secondary btn-icon-only btn-delete-source" data-id="${src.id}" title="Delete Data Source">×</button>
                 </div>
@@ -1262,6 +1354,9 @@ class PortfolioApp {
 
         document.querySelectorAll(".toggle-source-enable").forEach((cb) => {
             cb.addEventListener("change", (e) => this.toggleSourceEnabled(e.target.getAttribute("data-id"), e.target.checked));
+        });
+        document.querySelectorAll(".btn-edit-source").forEach((btn) => {
+            btn.addEventListener("click", (e) => this.editSource(e.currentTarget.getAttribute("data-id")));
         });
         document.querySelectorAll(".btn-sync-source").forEach((btn) => {
             btn.addEventListener("click", (e) => this.syncSource(this.state.sources.find((s) => s.id === e.currentTarget.getAttribute("data-id")), true));
@@ -1288,7 +1383,7 @@ class PortfolioApp {
         this.syncUi();
         this.logger.info("API", "Data source removed", {
             sourceId: source.id,
-            sourceName: source.name,
+            sourceName: this.getSourceDisplayName(source),
             url: source.url
         });
         this.showToast("Source removed successfully", "success");
@@ -1542,6 +1637,11 @@ class PortfolioApp {
 
     formatCurrency(value) {
         return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value || 0);
+    }
+
+    getSourceDisplayName(source) {
+        if (!source) return "";
+        return source.tickerSymbol ? `${source.tickerSymbol} (${source.name})` : source.name;
     }
 
     setText(id, value) {

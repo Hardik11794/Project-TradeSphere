@@ -25,6 +25,7 @@ The app then renders:
 - `app.js` - all runtime behavior, state management, CSV parsing, syncing, rendering, logs, and export/import
 - `Backend Script/AppScript.rtf` - Google Apps Script source for a separate Google Sheets backtesting / tracking workflow
 - `Backend Script/META - Back testing.xlsx` - spreadsheet reference material for the Apps Script workflow
+- `ticker-symbols.json` - local fallback lookup used when a ticker symbol is not provided directly
 - `README.md` - short run instructions and a few behavioral notes
 
 ## How To Run
@@ -194,6 +195,8 @@ The Developer Logs tab includes:
 - gviz endpoint
 - CORS-readable fallback through AllOrigins for Google Sheets URLs
 
+Source cards and log messages prefer `tickerSymbol` when it is available. If a source is saved with a company name instead of a symbol, the app falls back to `ticker-symbols.json` before using the raw input.
+
 ### Manual snapshots
 
 The modal adds a snapshot directly into `manualSnapshots`.
@@ -357,4 +360,3 @@ If something is broken, start here:
 3. `renderTable()`, `renderMetrics()`, and `renderChart()`
 4. `syncSource()` and `fetchCsvWithFallbacks()`
 5. Developer logs for runtime or fetch errors
-

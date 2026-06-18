@@ -23,6 +23,7 @@ Make sure the backend data source is also running and reachable when testing fee
 - `index.html` - UI shell
 - `style.css` - visual styling and layout
 - `app.js` - runtime logic, syncing, charting, logs, and export/import
+- `ticker-symbols.json` - local fallback lookup for source/company names to ticker symbols
 
 ## Notes
 
