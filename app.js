@@ -378,7 +378,9 @@ class PortfolioApp {
             currentChartTab: "portfolio",
             sortColumn: null,
             sortAscending: true,
-            tickerSymbolMap: {}
+            tickerSymbolMap: {},
+            liveQuoteCache: {},
+            liveQuoteRequests: {}
         };
         this.cache = {};
     }
@@ -1076,7 +1078,7 @@ class PortfolioApp {
 
     renderMetrics() {
         const s = this.state.snapshots;
-        const selectedTicker = this.getSelectedTickerFilter();
+        const selectedTicker = this.getResolvedTickerFilter();
         const buyRows = s.filter((row) => row.isBuy && (selectedTicker === "ALL" || row.ticker.toUpperCase() === selectedTicker));
         if (buyRows.length === 0) {
             this.setText("metric-portfolio-val", "—");
@@ -1086,6 +1088,8 @@ class PortfolioApp {
             this.setText("metric-pl-pct", "");
             this.setText("metric-cash", "—");
             this.setText("metric-avg-price", "—");
+            this.setText("metric-assets-val", "—");
+            this.setText("metric-shares-held", "No active holdings");
             this.setText("metric-total-spent", "Total Spent: —");
             return;
         }
@@ -1104,6 +1108,103 @@ class PortfolioApp {
         this.setText("metric-cash", display.cashRemaining || "—");
         this.setText("metric-avg-price", display.avgPurchasePrice || "—");
         this.setText("metric-total-spent", `Total Spent: ${display.totalSpent || "—"}`);
+
+        const holdings = this.getHoldingsSummary(selectedTicker, s);
+        if (holdings.totalShares > 0 && holdings.currentValue >= 0) {
+            this.setText("metric-assets-val", this.formatCurrency(holdings.currentValue));
+            const assetLabel = selectedTicker === "ALL"
+                ? `${holdings.totalShares} shares across ${holdings.tickerCount} ticker(s) @ ${this.formatCurrency(holdings.latestPrice)}`
+                : `${holdings.totalShares} shares @ ${this.formatCurrency(holdings.latestPrice)}`;
+            this.setText("metric-shares-held", assetLabel);
+            if (selectedTicker !== "ALL") this.refreshLiveQuote(selectedTicker, holdings.totalShares);
+        } else {
+            this.setText("metric-assets-val", "—");
+            this.setText("metric-shares-held", "No active holdings");
+        }
+    }
+
+    async refreshLiveQuote(ticker, totalShares) {
+        const normalized = String(ticker || "").toUpperCase().trim();
+        if (!normalized || totalShares <= 0) return;
+        if (this.state.liveQuoteRequests[normalized]) return;
+
+        const cached = this.state.liveQuoteCache[normalized];
+        if (cached && (Date.now() - cached.fetchedAt) < 60000) {
+            this.setText("metric-assets-val", this.formatCurrency(cached.price * totalShares));
+            this.setText("metric-shares-held", `${totalShares} shares @ ${this.formatCurrency(cached.price)} (live)`);
+            return;
+        }
+
+        this.state.liveQuoteRequests[normalized] = true;
+        try {
+            const price = await this.fetchLiveQuotePrice(normalized);
+            if (Number.isFinite(price) && price > 0) {
+                this.state.liveQuoteCache[normalized] = { price, fetchedAt: Date.now() };
+                if (this.getResolvedTickerFilter() === normalized) {
+                    this.setText("metric-assets-val", this.formatCurrency(price * totalShares));
+                    this.setText("metric-shares-held", `${totalShares} shares @ ${this.formatCurrency(price)} (live)`);
+                }
+            }
+        } catch (error) {
+            this.logger.warn("API", "Live quote fetch failed", { ticker: normalized, error });
+        } finally {
+            delete this.state.liveQuoteRequests[normalized];
+        }
+    }
+
+    async fetchLiveQuotePrice(ticker) {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1m&range=1d`;
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const result = data?.chart?.result?.[0];
+        const closes = result?.indicators?.quote?.[0]?.close || [];
+        for (let i = closes.length - 1; i >= 0; i--) {
+            const price = Number(closes[i]);
+            if (Number.isFinite(price) && price > 0) return price;
+        }
+        throw new Error("No live quote price returned");
+    }
+
+    getHoldingsSummary(selectedTicker, snapshots) {
+        const relevantRows = snapshots.filter((row) => row.isBuy && (selectedTicker === "ALL" || row.ticker.toUpperCase() === selectedTicker));
+        if (relevantRows.length === 0) {
+            return { totalShares: 0, latestPrice: 0, currentValue: 0, tickerCount: 0 };
+        }
+
+        if (selectedTicker !== "ALL") {
+            const totalShares = relevantRows.reduce((sum, row) => sum + CsvParser.cleanNumber(row.sharesBought), 0);
+            const latestPrice = CsvParser.cleanNumber(relevantRows[relevantRows.length - 1].todayPrice);
+            return {
+                totalShares,
+                latestPrice,
+                currentValue: totalShares * latestPrice,
+                tickerCount: 1
+            };
+        }
+
+        const perTicker = new Map();
+        for (const row of relevantRows) {
+            const ticker = String(row.ticker || "").toUpperCase();
+            const prev = perTicker.get(ticker) || { totalShares: 0, latestPrice: 0 };
+            prev.totalShares += CsvParser.cleanNumber(row.sharesBought);
+            prev.latestPrice = CsvParser.cleanNumber(row.todayPrice);
+            perTicker.set(ticker, prev);
+        }
+
+        let currentValue = 0;
+        let latestPrice = 0;
+        for (const value of perTicker.values()) {
+            currentValue += value.totalShares * value.latestPrice;
+            latestPrice = value.latestPrice;
+        }
+
+        return {
+            totalShares: [...perTicker.values()].reduce((sum, value) => sum + value.totalShares, 0),
+            latestPrice,
+            currentValue,
+            tickerCount: perTicker.size
+        };
     }
 
     renderTable() {
@@ -1113,7 +1214,7 @@ class PortfolioApp {
 
         const search = this.cache["search-input"].value.toLowerCase().trim();
         const decisionFilter = this.cache["filter-decision"].value;
-        const tickerFilter = this.getSelectedTickerFilter();
+        const tickerFilter = this.getResolvedTickerFilter();
 
         let filtered = this.state.snapshots.filter((row) => {
             const matchesSearch = row.ticker.toLowerCase().includes(search) || row.exchange.toLowerCase().includes(search);
@@ -1313,6 +1414,11 @@ class PortfolioApp {
     getSelectedTickerFilter() {
         const select = this.cache["filter-ticker"];
         return select ? String(select.value || "ALL").toUpperCase() : "ALL";
+    }
+
+    getResolvedTickerFilter() {
+        const selected = this.getSelectedTickerFilter();
+        return selected === "ALL" ? "ALL" : this.resolveTickerSymbol(selected);
     }
 
     renderStatusChips() {
@@ -1601,7 +1707,7 @@ class PortfolioApp {
         if (!canvas || !window.Chart) return;
         const ctx = canvas.getContext("2d");
         if (this.state.portfolioChartInstance) this.state.portfolioChartInstance.destroy();
-        const selectedTicker = this.getSelectedTickerFilter();
+        const selectedTicker = this.getResolvedTickerFilter();
         const buySnapshots = this.state.snapshots.filter((row) => row.isBuy && (selectedTicker === "ALL" || row.ticker.toUpperCase() === selectedTicker));
         if (buySnapshots.length === 0) return;
 
@@ -1668,7 +1774,7 @@ class PortfolioApp {
 
         const tickers = [...new Set(this.state.snapshots.map((s) => s.ticker.toUpperCase()))];
         const buyTickers = [...new Set(buySnapshots.map((s) => s.ticker.toUpperCase()))];
-        let chartTicker = this.getSelectedTickerFilter();
+        let chartTicker = this.getResolvedTickerFilter();
         if (chartTicker === "ALL") chartTicker = buyTickers[0] || tickers[0] || "";
         if (!chartTicker) return;
         const tickerSnapshots = buySnapshots.filter((s) => s.ticker.toUpperCase() === chartTicker);
