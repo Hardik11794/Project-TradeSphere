@@ -408,7 +408,9 @@ class PortfolioApp {
             "theme-toggle", "btn-reset", "btn-export", "csv-file", "btn-chart-portfolio",
             "btn-chart-prices", "search-input", "filter-decision", "filter-ticker",
             "btn-add-row", "modal-snapshot", "modal-close", "modal-cancel", "form-add-snapshot",
-            "btn-sync-all", "btn-enable-all", "btn-disable-all", "form-add-source",
+            "modal-source", "source-modal-close", "source-modal-cancel", "form-edit-source",
+            "edit-source-id", "edit-source-name", "edit-source-url", "edit-source-enabled",
+            "btn-sync-all", "btn-export-sources", "sources-file", "btn-enable-all", "btn-disable-all", "form-add-source",
             "input-source-name", "input-source-url", "input-source-enabled", "toast",
             "ledger-body", "table-empty-state", "sources-grid", "sources-empty-state",
             "portfolioChart", "metric-portfolio-val", "metric-pl-container", "trend-icon-pl",
@@ -478,8 +480,12 @@ class PortfolioApp {
         this.cache["modal-close"].addEventListener("click", () => this.hideModal());
         this.cache["modal-cancel"].addEventListener("click", () => this.hideModal());
         this.cache["modal-snapshot"].addEventListener("click", (e) => { if (e.target === this.cache["modal-snapshot"]) this.hideModal(); });
+        this.cache["source-modal-close"].addEventListener("click", () => this.hideSourceModal());
+        this.cache["source-modal-cancel"].addEventListener("click", () => this.hideSourceModal());
+        this.cache["modal-source"].addEventListener("click", (e) => { if (e.target === this.cache["modal-source"]) this.hideSourceModal(); });
 
         this.cache["form-add-snapshot"].addEventListener("submit", (e) => this.addManualSnapshot(e));
+        this.cache["form-edit-source"].addEventListener("submit", (e) => this.saveEditedSource(e));
         this.cache["theme-toggle"].addEventListener("click", () => this.toggleTheme());
 
         this.cache["btn-reset"].addEventListener("click", () => this.syncAllSources(true));
@@ -488,6 +494,8 @@ class PortfolioApp {
 
         this.cache["form-add-source"].addEventListener("submit", (e) => this.addSourceFromForm(e));
         this.cache["btn-sync-all"].addEventListener("click", () => this.syncAllSources(true));
+        this.cache["btn-export-sources"].addEventListener("click", () => this.exportSources());
+        this.cache["sources-file"].addEventListener("change", (e) => this.importSources(e));
         this.cache["btn-enable-all"].addEventListener("click", () => this.setAllSourcesEnabled(true));
         this.cache["btn-disable-all"].addEventListener("click", () => this.setAllSourcesEnabled(false));
 
@@ -687,6 +695,7 @@ class PortfolioApp {
             enabled,
             status: "pending",
             lastSync: "Never",
+            updatedAt: new Date().toISOString(),
             recordCount: 0,
             errorMessage: "",
             cachedData: ""
@@ -708,15 +717,30 @@ class PortfolioApp {
     editSource(id) {
         const source = this.state.sources.find((s) => s.id === id);
         if (!source) return;
+        this.cache["edit-source-id"].value = source.id;
+        this.cache["edit-source-name"].value = source.name;
+        this.cache["edit-source-url"].value = source.url;
+        this.cache["edit-source-enabled"].checked = Boolean(source.enabled);
+        this.showSourceModal();
+    }
 
-        const nextName = prompt("Update source name or ticker symbol:", source.name);
-        if (nextName === null) return;
+    showSourceModal() {
+        this.cache["modal-source"].classList.remove("hidden");
+    }
 
-        const nextUrl = prompt("Update source CSV URL:", source.url);
-        if (nextUrl === null) return;
+    hideSourceModal() {
+        this.cache["modal-source"].classList.add("hidden");
+    }
 
-        const trimmedName = nextName.trim();
-        const trimmedUrl = nextUrl.trim();
+    saveEditedSource(event) {
+        event.preventDefault();
+        const id = this.cache["edit-source-id"].value;
+        const source = this.state.sources.find((s) => s.id === id);
+        if (!source) return;
+
+        const trimmedName = this.cache["edit-source-name"].value.trim();
+        const trimmedUrl = this.cache["edit-source-url"].value.trim();
+        const enabled = this.cache["edit-source-enabled"].checked;
         if (!trimmedName || !trimmedUrl) {
             this.showToast("Source name and URL cannot be empty", "error");
             return;
@@ -725,14 +749,17 @@ class PortfolioApp {
         source.name = trimmedName;
         source.tickerSymbol = this.resolveTickerSymbol(trimmedName);
         source.url = this.normalizeSourceUrl(trimmedUrl);
+        source.enabled = enabled;
         source.status = "pending";
         source.errorMessage = "";
         source.cachedData = "";
         source.recordCount = 0;
         source.lastSync = "Never";
+        source.updatedAt = new Date().toISOString();
 
         this.persistState();
         this.syncUi();
+        this.hideSourceModal();
         this.logger.info("API", "Data source updated", {
             sourceId: source.id,
             sourceName: this.getSourceDisplayName(source),
@@ -1339,6 +1366,7 @@ class PortfolioApp {
                     <div class="source-card-stats">
                         <span>Rows Synced: <strong>${src.recordCount}</strong></span>
                         <span>Last Synced: <small>${src.lastSync}</small></span>
+                        <span>Last Updated: <small>${src.updatedAt ? this.formatLogTime(src.updatedAt) : "Never"}</small></span>
                     </div>
                     ${src.status === "error" && src.errorMessage ? `<div class="source-card-error">${src.errorMessage}</div>` : ""}
                 </div>
@@ -1370,6 +1398,7 @@ class PortfolioApp {
         const source = this.state.sources.find((s) => s.id === id);
         if (!source) return;
         source.enabled = enabled;
+        source.updatedAt = new Date().toISOString();
         this.persistState();
         this.syncUi();
         this.showToast(`${source.name} ${enabled ? "enabled" : "disabled"}`, "success");
@@ -1387,6 +1416,66 @@ class PortfolioApp {
             url: source.url
         });
         this.showToast("Source removed successfully", "success");
+    }
+
+    exportSources() {
+        if (this.state.sources.length === 0) {
+            this.showToast("No sources to export", "error");
+            return;
+        }
+
+        const blob = new Blob([JSON.stringify(this.state.sources, null, 2)], { type: "application/json;charset=utf-8;" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `tradesphere_sources_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        this.showToast("Source registry exported", "success");
+    }
+
+    importSources(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const parsed = JSON.parse(String(evt.target.result || "[]"));
+                if (!Array.isArray(parsed)) throw new Error("Source file must contain an array");
+
+                this.state.sources = parsed
+                    .map((source) => this.hydrateSource(source))
+                    .filter((source) => source && source.id && source.name && source.url)
+                    .map((source) => ({
+                        ...source,
+                        enabled: Boolean(source.enabled),
+                        status: source.status || "pending",
+                        lastSync: source.lastSync || "Never",
+                        updatedAt: source.updatedAt || new Date().toISOString(),
+                        recordCount: Number(source.recordCount || 0),
+                        errorMessage: source.errorMessage || "",
+                        cachedData: source.cachedData || ""
+                    }));
+
+                this.persistState();
+                this.syncUi();
+                this.logger.info("API", "Source registry imported", {
+                    sourceCount: this.state.sources.length,
+                    fileName: file.name
+                });
+                this.showToast(`Imported ${this.state.sources.length} sources`, "success");
+            } catch (error) {
+                this.logger.error("API", "Source registry import failed", {
+                    fileName: file.name,
+                    error
+                });
+                this.showToast(`Failed to import sources: ${error.message}`, "error");
+            }
+        };
+
+        reader.readAsText(file);
+        event.target.value = "";
     }
 
     renderLogs() {

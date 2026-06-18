@@ -239,6 +239,11 @@
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
                             <span>Sync All Feeds</span>
                         </button>
+                        <button id="btn-export-sources" class="btn btn-secondary">Export Sources</button>
+                        <label for="sources-file" class="btn btn-secondary file-upload-btn">
+                            <span>Import Sources</span>
+                            <input type="file" id="sources-file" accept=".json,application/json" style="display: none;">
+                        </label>
                         <button id="btn-enable-all" class="btn btn-secondary">Enable All</button>
                         <button id="btn-disable-all" class="btn btn-secondary">Disable All</button>
                     </div>
@@ -403,6 +408,35 @@
                 <div class="modal-footer">
                     <button type="button" id="modal-cancel" class="btn btn-secondary">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save Snapshot</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal for Editing Source -->
+    <div id="modal-source" class="modal-backdrop hidden">
+        <div class="modal-card glass-card animate-zoom">
+            <div class="modal-header">
+                <h3>Edit Data Source</h3>
+                <button id="source-modal-close" class="btn-close">×</button>
+            </div>
+            <form id="form-edit-source" class="modal-form">
+                <input type="hidden" id="edit-source-id">
+                <div class="form-group">
+                    <label for="edit-source-name">Ticker Symbol or Company Name</label>
+                    <input type="text" id="edit-source-name" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-source-url">Published CSV URL</label>
+                    <input type="url" id="edit-source-url" required>
+                </div>
+                <div class="form-group" style="flex-direction: row; align-items: center; gap: 0.5rem; justify-content: flex-start;">
+                    <input type="checkbox" id="edit-source-enabled" style="width: auto; margin-top: 0;">
+                    <label for="edit-source-enabled" style="cursor: pointer; user-select: none; font-size: 0.85rem; font-weight: 600;">Enabled</label>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" id="source-modal-cancel" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
                 </div>
             </form>
         </div>
