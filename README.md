@@ -4,10 +4,10 @@ TradeSphere is a trading portfolio dashboard with a backend data source that sup
 
 ## Run
 
-Run the frontend through a local server from the project root:
+Run the app through the bundled local server from the project root:
 
 ```sh
-python3 -m http.server 8765
+python3 server.py 8765
 ```
 
 Open:
@@ -16,7 +16,26 @@ Open:
 http://127.0.0.1:8765/index.html
 ```
 
-Make sure the backend data source is also running and reachable when testing feed sync.
+If that port is busy, use another one like `python3 server.py 8766` and open the matching URL.
+
+Do not use `python3 -m http.server` when you want source changes to persist to `Connection.json`. That static server cannot handle the app's `PUT /api/connections` request and will return `HTTP 501`.
+
+`Connection.json` is now the local source registry. Add/edit/delete source records in the UI and the server writes them back to that file.
+
+The file stores connections as:
+
+```json
+[
+  {
+    "Ticker Name": "META",
+    "URL": "https://..."
+  },
+  {
+    "Ticker Name": "NVDA",
+    "URL": "https://..."
+  }
+]
+```
 
 ## Project Files
 
@@ -24,6 +43,8 @@ Make sure the backend data source is also running and reachable when testing fee
 - `style.css` - visual styling and layout
 - `app.js` - runtime logic, syncing, charting, logs, and export/import
 - `ticker-symbols.json` - local fallback lookup for source/company names to ticker symbols
+- `Connection.json` - local source registry used by the dashboard and server
+- `server.py` - local static server plus `/api/connections` persistence endpoint
 
 ## Notes
 

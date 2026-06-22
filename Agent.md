@@ -26,6 +26,8 @@ The app then renders:
 - `Backend Script/AppScript.rtf` - Google Apps Script source for a separate Google Sheets backtesting / tracking workflow
 - `Backend Script/META - Back testing.xlsx` - spreadsheet reference material for the Apps Script workflow
 - `ticker-symbols.json` - local fallback lookup used when a ticker symbol is not provided directly
+- `Connection.json` - local source registry written by the app/server
+- `server.py` - local static server with a JSON write endpoint for source persistence
 - `README.md` - short run instructions and a few behavioral notes
 
 ## How To Run
@@ -196,6 +198,15 @@ The Developer Logs tab includes:
 - CORS-readable fallback through AllOrigins for Google Sheets URLs
 
 Source cards and log messages prefer `tickerSymbol` when it is available. If a source is saved with a company name instead of a symbol, the app falls back to `ticker-symbols.json` before using the raw input.
+
+`Connection.json` is the source registry for ticker symbols and URLs. The app loads it on startup when available and writes back to it through the local server whenever sources are added, edited, imported, or deleted. Keep its persisted shape simple:
+
+```json
+[
+  { "Ticker Name": "META", "URL": "https://..." },
+  { "Ticker Name": "NVDA", "URL": "https://..." }
+]
+```
 
 ### Manual snapshots
 

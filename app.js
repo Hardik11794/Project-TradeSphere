@@ -37,6 +37,93 @@ class StorageService {
     }
 }
 
+class ConnectionService {
+    constructor(logger = null, apiPath = "/api/connections", filePath = "Connection.json") {
+        this.logger = logger;
+        this.apiPath = apiPath;
+        this.filePath = filePath;
+    }
+
+    async load() {
+        const loaders = [
+            { label: "api", url: this.apiPath },
+            { label: "file", url: this.filePath }
+        ];
+
+        for (const loader of loaders) {
+            try {
+                const response = await fetch(loader.url, { cache: "no-store" });
+                if (!response.ok) continue;
+                const data = await response.json();
+                if (Array.isArray(data)) return this.normalizeConnections(data);
+            } catch (error) {
+                this.logger?.warn("STORAGE", `Failed to load connections from ${loader.label}`, { error });
+            }
+        }
+
+        return null;
+    }
+
+    async save(sources) {
+        const connections = this.toConnectionRecords(sources);
+        try {
+            const response = await fetch(this.apiPath, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(connections)
+            });
+
+            if (!response.ok) {
+                const message = response.status === 501
+                    ? "Connection.json writes require running python3 server.py instead of python3 -m http.server."
+                    : `Connection.json write failed with HTTP ${response.status}.`;
+                this.logger?.warn("STORAGE", message, { status: response.status });
+                return { ok: false, status: response.status, message };
+            }
+
+            return await response.json();
+        } catch (error) {
+            const message = "Connection.json write endpoint is unavailable. Local browser storage was updated, but the file was not.";
+            this.logger?.warn("STORAGE", message, { error });
+            return { ok: false, status: 0, message };
+        }
+    }
+
+    normalizeConnections(records) {
+        return records
+            .map((record, index) => {
+                const tickerName = String(record?.["Ticker Name"] ?? record?.tickerSymbol ?? record?.ticker ?? record?.name ?? "").trim().toUpperCase();
+                const url = String(record?.URL ?? record?.url ?? "").trim();
+                if (!tickerName || !url) return null;
+                return {
+                    id: record?.id || `src_${tickerName}_${index}`,
+                    name: tickerName,
+                    tickerSymbol: tickerName,
+                    url,
+                    enabled: record?.enabled !== false,
+                    status: record?.status || "pending",
+                    lastSync: record?.lastSync || "Never",
+                    updatedAt: record?.updatedAt || new Date().toISOString(),
+                    recordCount: Number(record?.recordCount || 0),
+                    errorMessage: record?.errorMessage || "",
+                    cachedData: record?.cachedData || ""
+                };
+            })
+            .filter(Boolean);
+    }
+
+    toConnectionRecords(sources) {
+        return (sources ?? [])
+            .map((source) => {
+                const tickerName = String(source?.tickerSymbol || source?.name || "").trim().toUpperCase();
+                const url = String(source?.url || "").trim();
+                if (!tickerName || !url) return null;
+                return { "Ticker Name": tickerName, "URL": url };
+            })
+            .filter(Boolean);
+    }
+}
+
 class DevLogger {
     constructor(storageKey = "trading_dev_logs", limit = 300) {
         this.storageKey = storageKey;
@@ -369,6 +456,7 @@ class PortfolioApp {
     constructor() {
         this.logger = new DevLogger();
         this.storage = new StorageService("trading_", this.logger);
+        this.connectionService = new ConnectionService(this.logger);
         this.ledgerEngine = new LedgerEngine(0, this.logger);
         this.state = {
             sources: [],
@@ -383,13 +471,14 @@ class PortfolioApp {
             liveQuoteRequests: {}
         };
         this.cache = {};
+        this.connectionWarningShown = false;
     }
 
     async init() {
         this.cacheElements();
         this.logger.subscribe(() => this.renderLogs());
         await this.loadTickerSymbolMap();
-        this.loadState();
+        await this.loadState();
         this.applyTheme(this.storage.getTheme(), false);
         this.bindEvents();
         this.registerGlobalErrorHandlers();
@@ -417,7 +506,7 @@ class PortfolioApp {
             "ledger-body", "table-empty-state", "sources-grid", "sources-empty-state",
             "portfolioChart", "metric-portfolio-val", "metric-pl-container", "trend-icon-pl",
             "metric-pl-val", "metric-pl-pct", "metric-cash",
-            "metric-avg-price", "metric-total-spent", "log-level-filter",
+            "metric-assets-val", "metric-shares-held", "metric-avg-price", "metric-total-spent", "log-level-filter",
             "log-category-filter", "btn-clear-logs", "btn-export-logs", "logs-list",
             "logs-empty-state", "log-total-count", "log-error-summary", "log-latest-time",
             "log-error-count", "status-last-sync"
@@ -425,16 +514,24 @@ class PortfolioApp {
         ids.forEach((id) => (this.cache[id] = document.getElementById(id)));
     }
 
-    loadState() {
-        this.state.sources = this.storage.get("sources", []);
+    async loadState() {
+        const storedConnections = await this.connectionService.load();
+        const sourceSeed = Array.isArray(storedConnections)
+            ? storedConnections
+            : this.storage.get("sources", []);
+        this.state.sources = sourceSeed.map((source) => this.hydrateSource(source));
         this.state.manualSnapshots = this.storage.get("manual_snapshots", []);
-        this.state.sources = this.state.sources.map((source) => this.hydrateSource(source));
     }
 
-    persistState() {
+    async persistState() {
         this.storage.set("sources", this.state.sources);
         this.storage.set("manual_snapshots", this.state.manualSnapshots);
         this.storage.set("snapshots", this.state.snapshots);
+        const result = await this.connectionService.save(this.state.sources);
+        if (result?.ok === false && !this.connectionWarningShown) {
+            this.connectionWarningShown = true;
+            this.showToast("Connection.json was not updated. Run python3 server.py to enable file persistence.", "error");
+        }
     }
 
     syncUi() {
@@ -444,7 +541,7 @@ class PortfolioApp {
 
     recalculate() {
         this.state.snapshots = this.ledgerEngine.compute(this.state.manualSnapshots, this.state.sources);
-        this.persistState();
+        void this.persistState();
     }
 
     renderAll() {
@@ -487,19 +584,19 @@ class PortfolioApp {
         this.cache["modal-source"].addEventListener("click", (e) => { if (e.target === this.cache["modal-source"]) this.hideSourceModal(); });
 
         this.cache["form-add-snapshot"].addEventListener("submit", (e) => this.addManualSnapshot(e));
-        this.cache["form-edit-source"].addEventListener("submit", (e) => this.saveEditedSource(e));
+        this.cache["form-edit-source"].addEventListener("submit", async (e) => this.saveEditedSource(e));
         this.cache["theme-toggle"].addEventListener("click", () => this.toggleTheme());
 
         this.cache["btn-reset"].addEventListener("click", () => this.syncAllSources(true));
         this.cache["btn-export"].addEventListener("click", () => this.exportLedgerToCSV());
         this.cache["csv-file"].addEventListener("change", (e) => this.importCsv(e));
 
-        this.cache["form-add-source"].addEventListener("submit", (e) => this.addSourceFromForm(e));
+        this.cache["form-add-source"].addEventListener("submit", async (e) => this.addSourceFromForm(e));
         this.cache["btn-sync-all"].addEventListener("click", () => this.syncAllSources(true));
         this.cache["btn-export-sources"].addEventListener("click", () => this.exportSources());
         this.cache["sources-file"].addEventListener("change", (e) => this.importSources(e));
-        this.cache["btn-enable-all"].addEventListener("click", () => this.setAllSourcesEnabled(true));
-        this.cache["btn-disable-all"].addEventListener("click", () => this.setAllSourcesEnabled(false));
+        this.cache["btn-enable-all"].addEventListener("click", async () => this.setAllSourcesEnabled(true));
+        this.cache["btn-disable-all"].addEventListener("click", async () => this.setAllSourcesEnabled(false));
 
         this.cache["log-level-filter"].addEventListener("change", () => this.renderLogs());
         this.cache["log-category-filter"].addEventListener("change", () => this.renderLogs());
@@ -650,7 +747,7 @@ class PortfolioApp {
         const file = event.target.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (evt) => {
+        reader.onload = async (evt) => {
             try {
                 const parsed = CsvParser.parse(String(evt.target.result || ""));
                 this.state.manualSnapshots.push(...parsed);
@@ -675,18 +772,18 @@ class PortfolioApp {
         event.target.value = "";
     }
 
-    addSourceFromForm(event) {
+    async addSourceFromForm(event) {
         event.preventDefault();
         const name = document.getElementById("input-source-name").value.trim();
         const url = document.getElementById("input-source-url").value.trim();
         const enabled = document.getElementById("input-source-enabled").checked;
         if (!name || !url) return;
-        this.addSource(name, url, enabled);
+        await this.addSource(name, url, enabled);
         event.target.reset();
         document.getElementById("input-source-enabled").checked = true;
     }
 
-    addSource(name, url, enabled) {
+    async addSource(name, url, enabled) {
         const normalizedUrl = this.normalizeSourceUrl(url);
         const tickerSymbol = this.resolveTickerSymbol(name);
         const source = {
@@ -703,7 +800,7 @@ class PortfolioApp {
             cachedData: ""
         };
         this.state.sources.push(source);
-        this.persistState();
+        await this.persistState();
         this.renderSources();
         this.logger.info("API", "Data source added", {
             sourceId: source.id,
@@ -734,7 +831,7 @@ class PortfolioApp {
         this.cache["modal-source"].classList.add("hidden");
     }
 
-    saveEditedSource(event) {
+    async saveEditedSource(event) {
         event.preventDefault();
         const id = this.cache["edit-source-id"].value;
         const source = this.state.sources.find((s) => s.id === id);
@@ -759,7 +856,7 @@ class PortfolioApp {
         source.lastSync = "Never";
         source.updatedAt = new Date().toISOString();
 
-        this.persistState();
+        await this.persistState();
         this.syncUi();
         this.hideSourceModal();
         this.logger.info("API", "Data source updated", {
@@ -841,10 +938,10 @@ class PortfolioApp {
         return normalized;
     }
 
-    setAllSourcesEnabled(enabled) {
+    async setAllSourcesEnabled(enabled) {
         if (this.state.sources.length === 0) return;
         this.state.sources.forEach((src) => { src.enabled = enabled; });
-        this.persistState();
+        await this.persistState();
         this.syncUi();
         this.logger.info("API", enabled ? "All data sources enabled" : "All data sources disabled", {
             sourceCount: this.state.sources.length
@@ -1487,7 +1584,7 @@ class PortfolioApp {
         grid.appendChild(fragment);
 
         document.querySelectorAll(".toggle-source-enable").forEach((cb) => {
-            cb.addEventListener("change", (e) => this.toggleSourceEnabled(e.target.getAttribute("data-id"), e.target.checked));
+            cb.addEventListener("change", async (e) => this.toggleSourceEnabled(e.target.getAttribute("data-id"), e.target.checked));
         });
         document.querySelectorAll(".btn-edit-source").forEach((btn) => {
             btn.addEventListener("click", (e) => this.editSource(e.currentTarget.getAttribute("data-id")));
@@ -1496,25 +1593,26 @@ class PortfolioApp {
             btn.addEventListener("click", (e) => this.syncSource(this.state.sources.find((s) => s.id === e.currentTarget.getAttribute("data-id")), true));
         });
         document.querySelectorAll(".btn-delete-source").forEach((btn) => {
-            btn.addEventListener("click", (e) => this.deleteSource(e.currentTarget.getAttribute("data-id")));
+            btn.addEventListener("click", async (e) => this.deleteSource(e.currentTarget.getAttribute("data-id")));
         });
     }
 
-    toggleSourceEnabled(id, enabled) {
+    async toggleSourceEnabled(id, enabled) {
         const source = this.state.sources.find((s) => s.id === id);
         if (!source) return;
         source.enabled = enabled;
         source.updatedAt = new Date().toISOString();
-        this.persistState();
+        await this.persistState();
         this.syncUi();
         this.showToast(`${source.name} ${enabled ? "enabled" : "disabled"}`, "success");
     }
 
-    deleteSource(id) {
+    async deleteSource(id) {
         const source = this.state.sources.find((s) => s.id === id);
         if (!source) return;
         if (!confirm(`Are you sure you want to remove the source "${source.name}"?`)) return;
         this.state.sources = this.state.sources.filter((s) => s.id !== id);
+        await this.persistState();
         this.syncUi();
         this.logger.info("API", "Data source removed", {
             sourceId: source.id,
@@ -1545,7 +1643,7 @@ class PortfolioApp {
         if (!file) return;
 
         const reader = new FileReader();
-        reader.onload = (evt) => {
+        reader.onload = async (evt) => {
             try {
                 const parsed = JSON.parse(String(evt.target.result || "[]"));
                 if (!Array.isArray(parsed)) throw new Error("Source file must contain an array");
@@ -1564,7 +1662,7 @@ class PortfolioApp {
                         cachedData: source.cachedData || ""
                     }));
 
-                this.persistState();
+                await this.persistState();
                 this.syncUi();
                 this.logger.info("API", "Source registry imported", {
                     sourceCount: this.state.sources.length,
@@ -1840,7 +1938,13 @@ class PortfolioApp {
     }
 
     setText(id, value) {
-        this.cache[id].textContent = value;
+        const element = this.cache[id] || document.getElementById(id);
+        if (!element) {
+            this.logger?.warn("UI", `Unable to update missing element "${id}"`);
+            return;
+        }
+        this.cache[id] = element;
+        element.textContent = value;
     }
 
     showToast(message, type = "success") {
