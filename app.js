@@ -786,6 +786,12 @@ class PortfolioApp {
     async addSource(name, url, enabled) {
         const normalizedUrl = this.normalizeSourceUrl(url);
         const tickerSymbol = this.resolveTickerSymbol(name);
+        const duplicate = this.findDuplicateSource(tickerSymbol, normalizedUrl);
+        if (duplicate) {
+            this.showDuplicateSourceMessage(duplicate);
+            return;
+        }
+
         const source = {
             id: `src_${Date.now()}`,
             name,
@@ -845,9 +851,17 @@ class PortfolioApp {
             return;
         }
 
+        const nextTickerSymbol = this.resolveTickerSymbol(trimmedName);
+        const nextUrl = this.normalizeSourceUrl(trimmedUrl);
+        const duplicate = this.findDuplicateSource(nextTickerSymbol, nextUrl, source.id);
+        if (duplicate) {
+            this.showDuplicateSourceMessage(duplicate);
+            return;
+        }
+
         source.name = trimmedName;
-        source.tickerSymbol = this.resolveTickerSymbol(trimmedName);
-        source.url = this.normalizeSourceUrl(trimmedUrl);
+        source.tickerSymbol = nextTickerSymbol;
+        source.url = nextUrl;
         source.enabled = enabled;
         source.status = "pending";
         source.errorMessage = "";
@@ -868,6 +882,32 @@ class PortfolioApp {
 
         if (source.enabled) this.syncSource(source, true);
         this.showToast("Source updated successfully", "success");
+    }
+
+    findDuplicateSource(tickerSymbol, url, excludeId = null) {
+        const normalizedTicker = this.normalizeTickerForCompare(tickerSymbol);
+        const normalizedUrl = this.normalizeUrlForCompare(url);
+        const duplicateUrl = this.state.sources.find((source) => source.id !== excludeId && this.normalizeUrlForCompare(source.url) === normalizedUrl);
+        if (duplicateUrl) return { type: "url", source: duplicateUrl };
+        const duplicateTicker = this.state.sources.find((source) => source.id !== excludeId && this.normalizeTickerForCompare(source.tickerSymbol || source.name) === normalizedTicker);
+        if (duplicateTicker) return { type: "ticker", source: duplicateTicker };
+        return null;
+    }
+
+    normalizeTickerForCompare(value) {
+        return String(value || "").trim().toUpperCase();
+    }
+
+    normalizeUrlForCompare(value) {
+        return String(value || "").trim().replace(/\/+$/, "");
+    }
+
+    showDuplicateSourceMessage(duplicate) {
+        if (duplicate.type === "url") {
+            this.showToast(`This Data Source already exists with Ticker Symbol "${duplicate.source.tickerSymbol || duplicate.source.name}".`, "error");
+            return;
+        }
+        this.showToast("This Ticker Symbol already exists, Please give different name.", "error");
     }
 
     async loadTickerSymbolMap() {
