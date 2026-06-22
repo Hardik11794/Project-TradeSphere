@@ -1,9 +1,44 @@
 {
-  "Meta Platforms": "META",
-  "Alphabet": "GOOGL",
-  "Amazon": "AMZN",
-  "Apple": "AAPL",
-  "Microsoft": "MSFT",
-  "NVIDIA": "NVDA",
-  "Tesla": "TSLA"
+  "META": {
+    "symbol": "META",
+    "displayName": "Meta",
+    "companyName": "Meta Platforms",
+    "domain": "meta.com"
+  },
+  "GOOGL": {
+    "symbol": "GOOGL",
+    "displayName": "Alphabet",
+    "companyName": "Alphabet",
+    "domain": "abc.xyz"
+  },
+  "AMZN": {
+    "symbol": "AMZN",
+    "displayName": "Amazon",
+    "companyName": "Amazon",
+    "domain": "amazon.com"
+  },
+  "AAPL": {
+    "symbol": "AAPL",
+    "displayName": "Apple",
+    "companyName": "Apple",
+    "domain": "apple.com"
+  },
+  "MSFT": {
+    "symbol": "MSFT",
+    "displayName": "Microsoft",
+    "companyName": "Microsoft",
+    "domain": "microsoft.com"
+  },
+  "NVDA": {
+    "symbol": "NVDA",
+    "displayName": "NVIDIA",
+    "companyName": "NVIDIA",
+    "domain": "nvidia.com"
+  },
+  "TSLA": {
+    "symbol": "TSLA",
+    "displayName": "Tesla",
+    "companyName": "Tesla",
+    "domain": "tesla.com"
+  }
 }

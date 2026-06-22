@@ -42,7 +42,7 @@ The file stores connections as:
 - `index.html` - UI shell
 - `style.css` - visual styling and layout
 - `app.js` - runtime logic, syncing, charting, logs, and export/import
-- `ticker-symbols.json` - local fallback lookup for source/company names to ticker symbols
+- `ticker-symbols.json` - local ticker metadata used for symbol lookup, display names, and web-loaded PNG icons
 - `Connection.json` - local source registry used by the dashboard and server
 - `server.py` - local static server plus `/api/connections` persistence endpoint
 

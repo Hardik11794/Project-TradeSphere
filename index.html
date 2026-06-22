@@ -62,7 +62,14 @@
                         <h1>Portfolio Command Center</h1>
                     </div>
                     <div class="header-actions">
-                        <select id="filter-ticker" class="filter-select header-ticker-select" aria-label="Ticker selector">
+                        <div class="ticker-picker" id="ticker-picker">
+                            <button id="ticker-picker-button" class="filter-select ticker-picker-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+                                <span id="ticker-picker-icon" class="ticker-icon-fallback">A</span>
+                                <span id="ticker-picker-label">All Tickers</span>
+                            </button>
+                            <div id="ticker-picker-menu" class="ticker-picker-menu hidden" role="listbox"></div>
+                        </div>
+                        <select id="filter-ticker" class="filter-select header-ticker-select native-ticker-select" aria-label="Ticker selector">
                             <option value="ALL">All Tickers</option>
                         </select>
                         <button id="btn-reset" class="btn btn-secondary" title="Sync all active data feeds">

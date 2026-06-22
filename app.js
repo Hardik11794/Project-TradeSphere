@@ -497,7 +497,7 @@ class PortfolioApp {
         const ids = [
             "nav-dashboard", "nav-sources", "nav-ledger", "nav-logs", "tab-dashboard", "tab-sources", "tab-logs",
             "theme-toggle", "btn-reset", "btn-export", "csv-file", "btn-chart-portfolio",
-            "btn-chart-prices", "search-input", "filter-decision", "filter-ticker",
+            "btn-chart-prices", "search-input", "filter-decision", "filter-ticker", "ticker-picker-button", "ticker-picker-icon", "ticker-picker-label", "ticker-picker-menu",
             "btn-add-row", "modal-snapshot", "modal-close", "modal-cancel", "form-add-snapshot",
             "modal-source", "source-modal-close", "source-modal-cancel", "form-edit-source",
             "edit-source-id", "edit-source-name", "edit-source-url", "edit-source-enabled",
@@ -569,6 +569,11 @@ class PortfolioApp {
             this.renderMetrics();
             this.renderTable();
             this.renderChart();
+            this.updateTickerPickerLabel();
+        });
+        this.cache["ticker-picker-button"].addEventListener("click", () => this.toggleTickerPicker());
+        document.addEventListener("click", (event) => {
+            if (!event.target.closest("#ticker-picker")) this.closeTickerPicker();
         });
 
         document.querySelectorAll(".sortable").forEach((header) => {
@@ -932,7 +937,19 @@ class PortfolioApp {
         const normalized = {};
         for (const [key, value] of Object.entries(data)) {
             if (!value) continue;
-            normalized[this.normalizeLookupKey(key)] = String(value).trim().toUpperCase();
+            const meta = typeof value === "string"
+                ? { symbol: value.trim().toUpperCase(), displayName: key, companyName: key }
+                : {
+                    symbol: String(value.symbol || key).trim().toUpperCase(),
+                    displayName: String(value.displayName || value.companyName || key).trim(),
+                    companyName: String(value.companyName || value.displayName || key).trim(),
+                    domain: String(value.domain || "").trim(),
+                    iconUrl: String(value.iconUrl || "").trim()
+                };
+            if (!meta.symbol) continue;
+            [key, meta.symbol, meta.displayName, meta.companyName].forEach((lookupValue) => {
+                if (lookupValue) normalized[this.normalizeLookupKey(lookupValue)] = meta;
+            });
         }
         return normalized;
     }
@@ -946,7 +963,33 @@ class PortfolioApp {
         if (!raw) return "";
         if (/^[A-Z0-9.\-]{1,10}$/.test(raw) && raw === raw.toUpperCase()) return raw;
         const normalizedKey = this.normalizeLookupKey(raw);
-        return this.state.tickerSymbolMap[normalizedKey] || raw.toUpperCase();
+        const meta = this.state.tickerSymbolMap[normalizedKey];
+        return meta?.symbol || raw.toUpperCase();
+    }
+
+    getTickerMeta(value) {
+        const raw = String(value || "").trim();
+        if (!raw || raw === "ALL") return null;
+        const resolved = this.resolveTickerSymbol(raw);
+        return this.state.tickerSymbolMap[this.normalizeLookupKey(resolved)] || {
+            symbol: resolved,
+            displayName: resolved,
+            companyName: resolved
+        };
+    }
+
+    getTickerIconUrl(value) {
+        const meta = this.getTickerMeta(value);
+        if (!meta) return "";
+        if (meta.iconUrl) return meta.iconUrl;
+        if (meta.domain) return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(meta.domain)}&sz=64`;
+        return "";
+    }
+
+    getTickerDisplayLabel(value) {
+        const meta = this.getTickerMeta(value);
+        if (!meta) return String(value || "");
+        return meta.displayName || meta.companyName || meta.symbol;
     }
 
     hydrateSource(source) {
@@ -1422,7 +1465,12 @@ class PortfolioApp {
         const rawValue = String(value ?? "");
 
         if (this.isNumericLikeCell(rawValue)) cell.classList.add("text-right", "font-mono");
-        if (normalizedHeader.includes("tick")) cell.classList.add("ticker-cell");
+        if (normalizedHeader.includes("tick")) {
+            cell.classList.add("ticker-cell");
+            if (rawValue.trim()) {
+                cell.innerHTML = this.getTickerIdentityMarkup(rawValue);
+            }
+        }
         if (normalizedHeader.includes("decision") && rawValue.trim()) {
             const badge = document.createElement("span");
             badge.className = `badge ${this.getDecisionBadgeClass(rawValue)}`;
@@ -1537,15 +1585,80 @@ class PortfolioApp {
         const select = this.cache["filter-ticker"];
         if (!select) return;
         const current = select.value;
-        const tickers = [...new Set(this.state.snapshots.map((s) => s.ticker.toUpperCase()))].sort();
+        const tickers = [...new Set([
+            ...this.state.snapshots.map((s) => s.ticker.toUpperCase()),
+            ...this.state.sources.map((source) => String(source.tickerSymbol || source.name || "").toUpperCase())
+        ].filter(Boolean))].sort();
         select.innerHTML = '<option value="ALL">All Tickers</option>';
         tickers.forEach((ticker) => {
             const option = document.createElement("option");
             option.value = ticker;
-            option.textContent = ticker;
+            option.textContent = this.getTickerDisplayLabel(ticker);
             select.appendChild(option);
         });
         if (tickers.includes(current)) select.value = current;
+        this.renderTickerPickerOptions(tickers);
+        this.updateTickerPickerLabel();
+    }
+
+    renderTickerPickerOptions(tickers) {
+        const menu = this.cache["ticker-picker-menu"];
+        if (!menu) return;
+        menu.innerHTML = "";
+        const options = ["ALL", ...tickers];
+        options.forEach((ticker) => {
+            const option = document.createElement("button");
+            option.type = "button";
+            option.className = "ticker-picker-option";
+            option.dataset.value = ticker;
+            option.setAttribute("role", "option");
+            option.innerHTML = ticker === "ALL"
+                ? `<span class="ticker-icon-fallback">A</span><span>All Tickers</span>`
+                : `${this.getTickerIconMarkup(ticker)}<span>${this.escapeHtml(this.getTickerDisplayLabel(ticker))}</span>`;
+            option.addEventListener("click", () => this.selectTickerFromPicker(ticker));
+            menu.appendChild(option);
+        });
+    }
+
+    selectTickerFromPicker(ticker) {
+        const select = this.cache["filter-ticker"];
+        if (!select) return;
+        select.value = ticker;
+        select.dispatchEvent(new Event("change"));
+        this.closeTickerPicker();
+    }
+
+    toggleTickerPicker() {
+        const menu = this.cache["ticker-picker-menu"];
+        const button = this.cache["ticker-picker-button"];
+        if (!menu || !button) return;
+        const isOpen = !menu.classList.contains("hidden");
+        menu.classList.toggle("hidden", isOpen);
+        button.setAttribute("aria-expanded", String(!isOpen));
+    }
+
+    closeTickerPicker() {
+        this.cache["ticker-picker-menu"]?.classList.add("hidden");
+        this.cache["ticker-picker-button"]?.setAttribute("aria-expanded", "false");
+    }
+
+    updateTickerPickerLabel() {
+        const selected = this.getSelectedTickerFilter();
+        const icon = this.cache["ticker-picker-icon"];
+        const label = this.cache["ticker-picker-label"];
+        if (!icon || !label) return;
+        if (selected === "ALL") {
+            icon.outerHTML = '<span id="ticker-picker-icon" class="ticker-icon-fallback">A</span>';
+            this.cache["ticker-picker-icon"] = document.getElementById("ticker-picker-icon");
+            label.textContent = "All Tickers";
+            return;
+        }
+
+        const wrapper = document.createElement("span");
+        wrapper.innerHTML = this.getTickerIconMarkup(selected, "ticker-picker-icon");
+        icon.replaceWith(wrapper.firstElementChild);
+        this.cache["ticker-picker-icon"] = document.getElementById("ticker-picker-icon");
+        label.textContent = this.getTickerDisplayLabel(selected);
     }
 
     getSelectedTickerFilter() {
@@ -1595,7 +1708,7 @@ class PortfolioApp {
             card.innerHTML = `
                 <div>
                     <div class="source-card-header">
-                        <div class="source-card-title">${this.escapeHtml(this.getSourceDisplayName(src))}</div>
+                        <div class="source-card-title">${this.getTickerIdentityMarkup(src.tickerSymbol || src.name)}</div>
                         <label class="switch">
                             <input type="checkbox" class="toggle-source-enable" data-id="${src.id}" ${src.enabled ? "checked" : ""}>
                             <span class="slider"></span>
@@ -1975,6 +2088,20 @@ class PortfolioApp {
     getSourceDisplayName(source) {
         if (!source) return "";
         return source.tickerSymbol ? `${source.tickerSymbol} (${source.name})` : source.name;
+    }
+
+    getTickerIconMarkup(ticker, id = "") {
+        const iconUrl = this.getTickerIconUrl(ticker);
+        const label = this.getTickerDisplayLabel(ticker);
+        const idAttr = id ? ` id="${this.escapeHtml(id)}"` : "";
+        if (!iconUrl) {
+            return `<span${idAttr} class="ticker-icon-fallback">${this.escapeHtml(label.charAt(0).toUpperCase() || "?")}</span>`;
+        }
+        return `<img${idAttr} class="ticker-icon-img" src="${this.escapeHtml(iconUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('span'), { className: 'ticker-icon-fallback', textContent: '${this.escapeHtml(label.charAt(0).toUpperCase() || "?")}' }))">`;
+    }
+
+    getTickerIdentityMarkup(ticker) {
+        return `<span class="ticker-identity">${this.getTickerIconMarkup(ticker)}<span>${this.escapeHtml(this.getTickerDisplayLabel(ticker))}</span></span>`;
     }
 
     setText(id, value) {

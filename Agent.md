@@ -25,7 +25,7 @@ The app then renders:
 - `app.js` - all runtime behavior, state management, CSV parsing, syncing, rendering, logs, and export/import
 - `Backend Script/AppScript.rtf` - Google Apps Script source for a separate Google Sheets backtesting / tracking workflow
 - `Backend Script/META - Back testing.xlsx` - spreadsheet reference material for the Apps Script workflow
-- `ticker-symbols.json` - local fallback lookup used when a ticker symbol is not provided directly
+- `ticker-symbols.json` - local ticker metadata used for symbol lookup, display names, and web-loaded PNG icons
 - `Connection.json` - local source registry written by the app/server
 - `server.py` - local static server with a JSON write endpoint for source persistence
 - `README.md` - short run instructions and a few behavioral notes
