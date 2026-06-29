@@ -4,7 +4,7 @@ This file is for the next coding agent. It is a fast map of the project, how it 
 
 ## What This Project Is
 
-TradeSphere is a browser-based trading portfolio dashboard. It aggregates trading snapshots from:
+TradeSphere is a browser-based trading portfolio dashboard with a sci-fi holographic command-interface UI. It aggregates trading snapshots from:
 
 - Manual snapshot entries added in the UI
 - CSV feeds from published Google Sheets links
@@ -21,7 +21,7 @@ The app then renders:
 ## Project Layout
 
 - `index.html` - the complete UI shell and all visible sections
-- `style.css` - the design system, layout, responsive behavior, and component styling
+- `style.css` - sci-fi design system: Orbitron + Share Tech Mono fonts, neon cyan palette (`#00e5ff`), HUD corner brackets on every card, scanline overlay, animated scan beams, pulsing glow effects; layout, responsive behavior, and component styling
 - `app.js` - all runtime behavior, state management, CSV parsing, syncing, rendering, logs, and export/import
 - `Backend Script/AppScript.rtf` - Google Apps Script source for a separate Google Sheets backtesting / tracking workflow
 - `Backend Script/META - Back testing.xlsx` - spreadsheet reference material for the Apps Script workflow
@@ -32,10 +32,10 @@ The app then renders:
 
 ## How To Run
 
-Run the frontend from the project root with a local static server:
+Run via the bundled server, not `python3 -m http.server`. The static server returns `HTTP 501` on `PUT /api/connections`, which breaks source persistence.
 
 ```sh
-python3 -m http.server 8765
+python3 server.py 8765
 ```
 
 Open:
@@ -316,11 +316,41 @@ It appears to:
 
 This is not executed by the browser app, but it documents the intended backtesting / tracking logic.
 
+## Design System
+
+The UI uses a sci-fi holographic theme. Future agents should keep edits consistent with it.
+
+**Fonts** (loaded via Google Fonts):
+
+- `Orbitron` — headings, metric values, section titles, brand, modal headers, empty-state headings
+- `Share Tech Mono` — all data values, table cells, labels, inputs, badges, log text, filter selects
+- `Inter` — body copy and buttons
+
+**Color tokens** (defined in `:root` in `style.css`):
+
+- `--cyan` `#00e5ff` — primary accent, active states, HUD brackets, sidebar brand
+- `--electric-green` `#00ff88` — gains, BUY badges, enabled toggle
+- `--hot-red` `#ff2255` — losses, errors, delete hover
+- `--amber` `#ffaa00` — warnings, pending states
+- `--violet` `#8833ff` — FIRST SNAPSHOT badge, fourth metric card accent
+
+**Key effects**:
+
+- Body has a repeating scanline overlay via `body::before`
+- Sidebar has an animated vertical scan beam via `sidebar::before`
+- Charts section has a horizontal drifting scan beam via `.charts-section::before`
+- Every `.glass-card` gets HUD corner brackets via `::before` (top-left) and `::after` (bottom-right)
+- Metric cards each use a per-child color for their corner brackets
+- Brand icon has a `pulse-brand` keyframe glow animation
+- Metric values have a subtle `data-flicker` keyframe animation
+
+When adding new cards or sections, extend `.glass-card` and inherit the bracket system automatically.
+
 ## Safe Edit Zones
 
 Usually safe to change:
 
-- Styling in `style.css`
+- Styling in `style.css` — stay within the sci-fi token system; don't introduce new color families without adding a CSS variable
 - Layout and text in `index.html`
 - Non-breaking rendering improvements in `app.js`
 - Developer-log messaging
